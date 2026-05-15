@@ -3,10 +3,11 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+const supabaseUrl = process.env.SUPABASE_URL || 'http://localhost:54321';
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || 'local-development-key';
 
-if (!supabaseUrl || !supabaseKey) {
+if (!process.env.SUPABASE_URL || (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY)) {
   const msg = '⚠️ Supabase URL or Key is missing. Database connections will fail.';
   if (process.env.NODE_ENV === 'production') {
     throw new Error(msg);
@@ -16,6 +17,4 @@ if (!supabaseUrl || !supabaseKey) {
 
 // We use service role key if available for administrative DB tasks on the backend.
 // Guard against createClient receiving empty strings which causes cryptic errors.
-export const supabase = (supabaseUrl && supabaseKey)
-  ? createClient(supabaseUrl, supabaseKey)
-  : null;
+export const supabase = createClient(supabaseUrl, supabaseKey);

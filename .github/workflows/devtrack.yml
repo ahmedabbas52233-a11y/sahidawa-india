@@ -116,6 +116,7 @@ jobs:
           PR_LABELS:      ${{ steps.pr_meta.outputs.pr_labels }}
           LINES_CHANGED:  ${{ steps.pr_meta.outputs.lines_changed }}
           PR_TITLE:       ${{ steps.pr_meta.outputs.pr_title }}
+          PR_AUTHOR:      ${{ steps.pr_meta.outputs.pr_author }}
         run: |
           node .github/scripts/score-impact.mjs
           echo "Scoring complete. Verdict: $verdict"
