@@ -73,7 +73,7 @@ jobs:
                 owner: repo.owner,
                 repo: repo.repo,
                 issue_number: issueNumber,
-                body: `❌ **Assignment Denied**\n\nHi @${commenter}, to ensure fair opportunities for everyone participating in GSSoC/Hacktoberfest, contributors are limited to a maximum of **3 active assigned issues** at a time.\n\nYou are already assigned to the following ${activeAssignedIssues.length} active tasks:\n- ${assignedIssueList}\n\nPehle unhe complete kijiye without incomplete PR raise kare, tabhi agle task ke liye apply kare! Thank you for your cooperation! 🤝`
+                body: `❌ **Assignment Denied**\n\nHi @${commenter}, to ensure fair opportunities for everyone participating in GSSoC/Hacktoberfest, contributors are limited to a maximum of **3 active assigned issues** at a time.\n\nYou are already assigned to the following ${activeAssignedIssues.length} active tasks:\n- ${assignedIssueList}\n\nPlease complete your currently assigned tasks before requesting assignment for new ones! Thank you for your cooperation! 🤝`
               });
               return;
             }
