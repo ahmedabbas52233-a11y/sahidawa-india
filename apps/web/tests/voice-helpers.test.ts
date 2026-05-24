@@ -1,10 +1,12 @@
 import { getConfidenceMeta } from "../app/[locale]/voice/lib/confidence";
+import { resolveSpeechSynthesisVoice } from "../app/[locale]/voice/lib/browser";
 import { detectEmergencyKeywords } from "../app/[locale]/voice/lib/emergency";
 import { shouldAutoFocusVoicePanel } from "../app/[locale]/voice/lib/accessibility";
 import {
     DEFAULT_VOICE_LANGUAGE,
     VOICE_LANGUAGE_OPTIONS,
     getVoiceLanguageOption,
+    resolveVoiceWorkflowLanguage,
 } from "../app/[locale]/voice/lib/languages";
 import {
     getPreferredRecordingMimeType,
@@ -72,6 +74,15 @@ describe("voice language config", () => {
             responseLanguage: "Tamil",
         });
     });
+
+    it("keeps the active workflow language stable after capture starts", () => {
+        expect(resolveVoiceWorkflowLanguage(null, "bn-IN", "te-IN")).toBe("bn-IN");
+        expect(resolveVoiceWorkflowLanguage(null, null, "te-IN")).toBe("te-IN");
+    });
+
+    it("prefers the session snapshot over stale state on retry", () => {
+        expect(resolveVoiceWorkflowLanguage("te-IN", "bn-IN", "te-IN")).toBe("te-IN");
+    });
 });
 
 describe("voice recording helpers", () => {
@@ -94,6 +105,45 @@ describe("voice recording helpers", () => {
         };
 
         expect(getPreferredRecordingMimeType(mediaRecorderMock)).toBe("");
+    });
+});
+
+describe("speech synthesis voice fallback", () => {
+    it("returns an exact match when the browser supports the selected language", () => {
+        const matchingVoice = { lang: "bn-IN", name: "Bengali voice" } as SpeechSynthesisVoice;
+        const nonMatchingVoice = { lang: "en-US", name: "English voice" } as SpeechSynthesisVoice;
+
+        expect(
+            resolveSpeechSynthesisVoice(
+                {
+                    speechSynthesis: {
+                        getVoices: () => [nonMatchingVoice, matchingVoice],
+                    },
+                } as Window,
+                "bn-IN"
+            )
+        ).toMatchObject({
+            voice: matchingVoice,
+            supportLevel: "exact",
+        });
+    });
+
+    it("surfaces a fallback when no matching TTS voice is available", () => {
+        const fallbackVoice = { lang: "en-US", name: "English voice" } as SpeechSynthesisVoice;
+
+        expect(
+            resolveSpeechSynthesisVoice(
+                {
+                    speechSynthesis: {
+                        getVoices: () => [fallbackVoice],
+                    },
+                } as Window,
+                "te-IN"
+            )
+        ).toMatchObject({
+            voice: fallbackVoice,
+            supportLevel: "fallback",
+        });
     });
 });
 

@@ -6,8 +6,8 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { PageHeader } from "../components/PageHeader";
 import {
-    findBestVoice,
     getSpeechRecognitionConstructor,
+    resolveSpeechSynthesisVoice,
     stopSpeaking,
     supportsSpeechSynthesis,
     type SpeechRecognitionLike,
@@ -18,6 +18,7 @@ import { shouldAutoFocusVoicePanel } from "./lib/accessibility";
 import {
     DEFAULT_VOICE_LANGUAGE,
     getVoiceLanguageOption,
+    resolveVoiceWorkflowLanguage,
     VOICE_LANGUAGE_OPTIONS,
 } from "./lib/languages";
 import { formatVoiceShareReport } from "./lib/report";
@@ -46,13 +47,21 @@ const VOICE_ANIMATION_STORAGE_KEY = "sahidawa.voice.animations";
 
 function getRecognitionErrorState(
     errorCode: string,
-    t: ReturnType<typeof useTranslations>
+    t: ReturnType<typeof useTranslations>,
+    languageLabel?: string
 ): VoiceErrorState {
     switch (errorCode) {
         case "unsupported":
             return {
                 title: t("errors.unsupported_title"),
                 message: t("errors.unsupported_message"),
+            };
+        case "language-not-supported":
+            return {
+                title: t("errors.language_not_supported_title"),
+                message: t("errors.language_not_supported_message", {
+                    language: languageLabel ?? t("language_selector"),
+                }),
             };
         case "not-allowed":
         case "service-not-allowed":
@@ -101,6 +110,7 @@ export default function VoiceTriagePage() {
     const t = useTranslations("VoicePage");
     const [step, setStep] = useState<VoiceStep>("initial");
     const [selectedLanguage, setSelectedLanguage] = useState(DEFAULT_VOICE_LANGUAGE);
+    const [activeLanguageCode, setActiveLanguageCode] = useState<string | null>(null);
     const [isListening, setIsListening] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [transcript, setTranscript] = useState("");
@@ -123,12 +133,29 @@ export default function VoiceTriagePage() {
     const latestConfidenceRef = useRef<number | undefined>(undefined);
     const didHandleRecognitionEndRef = useRef(false);
     const manualStopRef = useRef(false);
+    const sessionLanguageRef = useRef<string | null>(null);
     const startSessionIdRef = useRef(0);
     const autoSpokenKeyRef = useRef("");
+    const ttsFallbackNoticeKeyRef = useRef("");
     const panelRef = useRef<HTMLDivElement | null>(null);
 
-    const selectedLanguageOption = getVoiceLanguageOption(selectedLanguage);
-    const resultLanguageOption = getVoiceLanguageOption(resultLanguageCode ?? selectedLanguage);
+    const workflowLanguageCode = resolveVoiceWorkflowLanguage(
+        sessionLanguageRef.current,
+        activeLanguageCode,
+        selectedLanguage
+    );
+    const workflowLanguageOption = getVoiceLanguageOption(workflowLanguageCode);
+    const resultLanguageOption = getVoiceLanguageOption(resultLanguageCode ?? workflowLanguageCode);
+    const isLanguageSelectionLocked =
+        step === "listening" || step === "processing" || step === "review" || step === "result";
+
+    function getWorkflowLanguageCode() {
+        return resolveVoiceWorkflowLanguage(
+            sessionLanguageRef.current,
+            activeLanguageCode,
+            selectedLanguage
+        );
+    }
 
     function detachRecognitionHandlers(recognition: SpeechRecognitionLike | null) {
         if (!recognition) {
@@ -306,7 +333,10 @@ export default function VoiceTriagePage() {
         didHandleRecognitionEndRef.current = false;
         manualStopRef.current = false;
         autoSpokenKeyRef.current = "";
+        ttsFallbackNoticeKeyRef.current = "";
 
+        sessionLanguageRef.current = null;
+        setActiveLanguageCode(null);
         setIsListening(false);
         setIsSpeaking(false);
         setIsVisualizerFading(false);
@@ -366,7 +396,8 @@ export default function VoiceTriagePage() {
             const file = new File([mediaBlob], "voice-triage.webm", {
                 type: mediaBlob.type || "audio/webm",
             });
-            const transcription = await transcribeRecordedAudio(file, selectedLanguage);
+            const activeWorkflowLanguage = getWorkflowLanguageCode();
+            const transcription = await transcribeRecordedAudio(file, activeWorkflowLanguage);
             const normalizedTranscript = transcription.transcript.trim();
 
             if (!normalizedTranscript) {
@@ -385,7 +416,7 @@ export default function VoiceTriagePage() {
 
             if (
                 shouldReviewTranscription(normalizedTranscript, {
-                    selectedLanguage,
+                    selectedLanguage: activeWorkflowLanguage,
                     detectedLanguage: transcription.language,
                 })
             ) {
@@ -411,7 +442,7 @@ export default function VoiceTriagePage() {
         nextConfidence: ConfidenceMeta,
         localEmergencyMatches: string[]
     ) {
-        const activeLanguageOption = getVoiceLanguageOption(selectedLanguage);
+        const activeLanguageOption = getVoiceLanguageOption(getWorkflowLanguageCode());
         setStep("processing");
         setError(null);
 
@@ -486,10 +517,25 @@ export default function VoiceTriagePage() {
 
         const utterance = new SpeechSynthesisUtterance(result.summary);
         utterance.lang = resultLanguageOption.speechSynthesisLang;
-        const bestVoice = findBestVoice(window, resultLanguageOption.speechSynthesisLang);
+        const voiceMatch = resolveSpeechSynthesisVoice(
+            window,
+            resultLanguageOption.speechSynthesisLang
+        );
 
-        if (bestVoice) {
-            utterance.voice = bestVoice;
+        if (voiceMatch.voice) {
+            utterance.voice = voiceMatch.voice;
+        }
+
+        if (voiceMatch.supportLevel === "fallback") {
+            const fallbackNoticeKey = `${resultLanguageOption.value}:${result.summary}`;
+            if (ttsFallbackNoticeKeyRef.current !== fallbackNoticeKey) {
+                ttsFallbackNoticeKeyRef.current = fallbackNoticeKey;
+                toast.warning(
+                    t("tts_fallback_message", {
+                        language: resultLanguageOption.label,
+                    })
+                );
+            }
         }
 
         utterance.onstart = () => setIsSpeaking(true);
@@ -595,15 +641,18 @@ export default function VoiceTriagePage() {
     }
 
     function startSpeechRecognitionFallback() {
+        const fallbackWorkflowLanguageOption = getVoiceLanguageOption(getWorkflowLanguageCode());
         const SpeechRecognition = getSpeechRecognitionConstructor(window);
         if (!SpeechRecognition) {
-            setError(getRecognitionErrorState("unsupported", t));
+            setError(
+                getRecognitionErrorState("unsupported", t, fallbackWorkflowLanguageOption.label)
+            );
             setStep("error");
             return;
         }
 
         const recognition = new SpeechRecognition();
-        recognition.lang = selectedLanguageOption.speechRecognition;
+        recognition.lang = fallbackWorkflowLanguageOption.speechRecognition;
         recognition.interimResults = true;
         recognition.continuous = false;
         recognition.maxAlternatives = 1;
@@ -656,7 +705,13 @@ export default function VoiceTriagePage() {
                 recognitionRef.current = null;
             }
             detachRecognitionHandlers(recognition);
-            setError(getRecognitionErrorState(event.error || "generic", t));
+            setError(
+                getRecognitionErrorState(
+                    event.error || "generic",
+                    t,
+                    fallbackWorkflowLanguageOption.label
+                )
+            );
             setStep("error");
         };
 
@@ -724,7 +779,10 @@ export default function VoiceTriagePage() {
         latestConfidenceRef.current = undefined;
         didHandleRecognitionEndRef.current = false;
         manualStopRef.current = false;
+        ttsFallbackNoticeKeyRef.current = "";
 
+        sessionLanguageRef.current = selectedLanguage;
+        setActiveLanguageCode(selectedLanguage);
         setTranscript("");
         setConfidence(DEFAULT_FLOW_CONFIDENCE);
         setResult(null);
@@ -871,9 +929,11 @@ export default function VoiceTriagePage() {
                 variant="light"
                 showLanguage={true}
                 languageName={
-                    step === "result" && resultLanguageCode
-                        ? resultLanguageOption.label
-                        : selectedLanguageOption.label
+                    isLanguageSelectionLocked
+                        ? step === "result" && resultLanguageCode
+                            ? resultLanguageOption.label
+                            : workflowLanguageOption.label
+                        : getVoiceLanguageOption(selectedLanguage).label
                 }
             />
 
@@ -889,9 +949,7 @@ export default function VoiceTriagePage() {
                         id="voice-language"
                         value={selectedLanguage}
                         onChange={(event) => setSelectedLanguage(event.target.value)}
-                        disabled={
-                            step === "listening" || step === "processing" || step === "result"
-                        }
+                        disabled={isLanguageSelectionLocked}
                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
                     >
                         {VOICE_LANGUAGE_OPTIONS.map((option) => (
