@@ -60,8 +60,14 @@ export async function fetchWithRetry(
     }
 
     const config = { ...DEFAULT_CONFIG, ...retryConfig };
-    const timeout = options.timeout || 10000;
-
+    // Extend timeout on slow networks — 2G users need more time
+    const baseTimeout = options.timeout || 10000;
+    const isSlowNetwork =
+        typeof navigator !== "undefined" &&
+        typeof (navigator as any).connection !== "undefined" &&
+        (["slow-2g", "2g"].includes((navigator as any).connection?.effectiveType) ||
+            (navigator as any).connection?.saveData === true);
+    const timeout = isSlowNetwork ? Math.min(baseTimeout * 2, 30000) : baseTimeout;
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= config.maxRetries + 1; attempt++) {
@@ -108,7 +114,7 @@ export async function fetchWithRetry(
                 // Check if we should retry based on status code
                 if (
                     attempt <= config.maxRetries &&
-                    config.shouldRetry(new Response(null, { status: response.status }), attempt)
+                    config.shouldRetry(new Response("", { status: response.status }), attempt)
                 ) {
                     const delay = getBackoffDelay(attempt, config);
                     await sleep(delay);
@@ -149,7 +155,7 @@ export async function fetchWithRetry(
             const delay = getBackoffDelay(attempt, config);
 
             // Log retry attempt in development
-            if (process.env.NODE_ENV === "development") {
+            if (typeof process !== "undefined" && process.env?.NODE_ENV === "development") {
                 console.log(
                     `[API Retry] Attempt ${attempt}/${config.maxRetries + 1} failed. ` +
                         `Retrying in ${Math.round(delay)}ms... Error: ${lastError.message}`
@@ -198,6 +204,7 @@ class OfflineRequestQueue {
             timestamp: Date.now(),
             retryCount: 0,
         });
+        this.notify();
         return id;
     }
 
@@ -206,6 +213,7 @@ class OfflineRequestQueue {
      */
     remove(id: string): void {
         this.queue = this.queue.filter((req) => req.id !== id);
+        this.notify();
     }
 
     /**
@@ -220,6 +228,7 @@ class OfflineRequestQueue {
      */
     clear(): void {
         this.queue = [];
+        this.notify();
     }
 
     /**
