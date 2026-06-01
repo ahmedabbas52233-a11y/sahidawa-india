@@ -31,8 +31,17 @@ const TILES_CACHE_NAME = `sahidawa-tiles-${CACHE_VERSION}`;
 /** Pages to pre-cache on install so they are available offline immediately */
 const PRECACHE_PAGES = [
     "/",
-    "/en", "/hi", "/gu", "/ta", "/bn", "/mr", "/te",
-    "/en/offline", "/hi/offline", "/gu/offline", "/ta/offline",
+    "/en",
+    "/hi",
+    "/gu",
+    "/ta",
+    "/bn",
+    "/mr",
+    "/te",
+    "/en/offline",
+    "/hi/offline",
+    "/gu/offline",
+    "/ta/offline",
 ];
 
 /** Maximum age (ms) for a stale API response before forcing a network refresh */

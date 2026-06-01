@@ -135,7 +135,9 @@ export async function fetchWithRetry(
 
             // If user aborted the request, propagate immediately
             if (options.signal?.aborted && !isTimeout) {
-                throw lastError.name === "AbortError" ? new Error("Request was cancelled.") : lastError;
+                throw lastError.name === "AbortError"
+                    ? new Error("Request was cancelled.")
+                    : lastError;
             }
 
             const shouldRetry = config.shouldRetry(lastError, attempt);
@@ -145,8 +147,14 @@ export async function fetchWithRetry(
                 if (isTimeout) {
                     throw new Error("Request timed out. Please try again.");
                 }
-                if (lastError.name === "TypeError" && typeof window !== "undefined" && !window.navigator.onLine) {
-                    throw new Error("You are currently offline. Please check your internet connection.");
+                if (
+                    lastError.name === "TypeError" &&
+                    typeof window !== "undefined" &&
+                    !window.navigator.onLine
+                ) {
+                    throw new Error(
+                        "You are currently offline. Please check your internet connection."
+                    );
                 }
                 throw lastError;
             }
