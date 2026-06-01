@@ -22,6 +22,7 @@ import { useTranslations } from "next-intl";
 import SearchBar from "./components/SearchBar";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import SafetyStatsBanner from "@/components/SafetyStatsBanner"
 
 function formatRelativeTime(dateString: string | null): string {
     if (!dateString) return "Recent";
@@ -117,6 +118,8 @@ export default function SahiDawaHome() {
                     <p className="mx-auto max-w-2xl text-sm leading-relaxed font-semibold text-slate-500 md:text-base dark:text-slate-400">
                         {tHome("subtitle")}
                     </p>
+                    {/*Safety Stats Banner*/}
+                    <SafetyStatsBanner />
 
                     {/* Search Bar */}
                     <div className="mx-auto w-full max-w-2xl pt-2">
