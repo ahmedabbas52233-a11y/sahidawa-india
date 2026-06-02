@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     AlertCircle,
     Heart,
-    Loader2,
     MapPin,
     Phone,
     Shield,
@@ -13,6 +12,7 @@ import {
     ShieldCheck,
     Hospital,
     Pill,
+    Navigation,
     Share2,
     Check,
 } from "lucide-react";
@@ -48,6 +48,21 @@ function PharmacyPanelRow({
     isSelected: boolean;
     onSelect: () => void;
 }) {
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll the card into view smoothly when selected from a map marker click
+    useEffect(() => {
+        if (isSelected && cardRef.current) {
+            cardRef.current.scrollIntoView({
+                behavior: "smooth",
+                block: "nearest",
+            });
+        }
+    }, [isSelected]);
+
+    // ✅ FIXED: Proper template string token usage ($) and nested interface paths applied
+    const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${pharmacy.coordinates.lat},${pharmacy.coordinates.lng}`;
+
     const [shareFeedback, setShareFeedback] = useState<"none" | "shared" | "copied">("none");
 
     const handleShare = async (e: React.MouseEvent) => {
@@ -92,6 +107,8 @@ function PharmacyPanelRow({
 
     return (
         <article
+            ref={cardRef}
+            id={`pharmacy-card-${pharmacy.id}`}
             className={`rounded-xl border p-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-500/30 hover:shadow-md active:scale-[0.99] ${
                 isSelected
                     ? "border-emerald-300 bg-emerald-50/60 shadow-md shadow-emerald-100/30 dark:border-emerald-900 dark:bg-emerald-950/20 dark:shadow-emerald-950/10"
@@ -129,34 +146,34 @@ function PharmacyPanelRow({
                             <h3 className="truncate text-sm font-semibold text-(--color-text-primary)">
                                 {pharmacy.name}
                             </h3>
-                            {pharmacy.isVerified && (
-                                <span className="dark:text-emerald-450 inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-950/30">
-                                    <Shield size={7} />
-                                    Verified
-                                </span>
-                            )}
-                            {pharmacy.rating > 0 && (
-                                <span className="flex shrink-0 items-center gap-0.5">
-                                    <Star size={10} className="fill-amber-400 text-amber-400" />
-                                    <span className="text-[11px] font-bold text-(--color-text-primary)">
-                                        {pharmacy.rating}
+                            <div className="flex shrink-0 items-center gap-1">
+                                {pharmacy.isVerified && (
+                                    <span className="dark:text-emerald-450 inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:bg-emerald-950/30">
+                                        <Shield size={7} />
+                                        Verified
                                     </span>
-                                </span>
-                            )}
+                                )}
+                                {pharmacy.rating > 0 && (
+                                    <span className="flex items-center gap-0.5">
+                                        <Star size={10} className="fill-amber-400 text-amber-400" />
+                                        <span className="text-[11px] font-bold text-(--color-text-primary)">
+                                            {pharmacy.rating}
+                                        </span>
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
-                        {pharmacy.address && (
-                            <div className="mt-0.5 flex items-center gap-1">
-                                <MapPin size={8} className="shrink-0 text-(--color-text-muted)" />
-                                <p className="truncate text-[10px] text-(--color-text-secondary)">
-                                    {pharmacy.address}
-                                </p>
-                            </div>
-                        )}
+                        <div className="mt-0.5 flex items-center gap-1">
+                            <MapPin size={8} className="shrink-0 text-(--color-text-muted)" />
+                            <p className="truncate text-[10px] text-(--color-text-secondary)">
+                                {pharmacy.address || "No precise address listed in OSM"}
+                            </p>
+                        </div>
                     </div>
                 </div>
 
-                <div className="mt-2 ml-11 flex flex-wrap items-center gap-2">
+                <div className="mt-2 ml-11 flex flex-wrap items-center gap-1.5">
                     <span
                         className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                             pharmacy.distance !== "—"
@@ -166,12 +183,17 @@ function PharmacyPanelRow({
                     >
                         {pharmacy.distance !== "—" ? `${pharmacy.distance} away` : "Distance —"}
                     </span>
+
+                    {/* Live reliability metadata badge */}
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600 dark:bg-slate-900 dark:text-slate-400">
+                        Live from OSM
+                    </span>
                 </div>
 
                 <div className="mt-1.5 ml-11 flex flex-wrap gap-1">
                     <span className="inline-flex items-center gap-0.5 rounded-full bg-(--color-surface-muted) px-1.5 py-0.5 text-[9px] font-medium text-(--color-text-secondary)">
                         <Shield size={6} />
-                        {pharmacy.status}
+                        {pharmacy.status || "Status unknown"}
                     </span>
                     <span
                         className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
@@ -186,7 +208,17 @@ function PharmacyPanelRow({
                 </div>
             </button>
 
-            <div className="mt-2 ml-11 flex flex-wrap gap-2">
+            {/* Action Group Footer Buttons */}
+            <div className="mt-3 ml-11 flex flex-wrap gap-2">
+                <a
+                    href={directionsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-700 active:bg-emerald-800"
+                >
+                    <Navigation size={9} className="fill-white" />
+                    Directions
+                </a>
                 {pharmacy.phone && (
                     <a
                         href={`tel:${pharmacy.phone}`}
@@ -196,7 +228,6 @@ function PharmacyPanelRow({
                         Call
                     </a>
                 )}
-
                 <button
                     type="button"
                     onClick={handleShare}
