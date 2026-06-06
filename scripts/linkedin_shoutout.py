@@ -105,12 +105,43 @@ def validate_pr_size(pr: dict) -> None:
     print(f"✅ PR Size Validation Passed. Lines changed: {lines_changed} (Threshold: {threshold})")
 
 
+def is_dummy_linkedin_url(url: str) -> bool:
+    if not url:
+        return True
+    url_lower = url.lower()
+    dummy_keywords = [
+        "dipexplorer-final-official-github-test",
+        "github-test",
+        "your-username",
+        "your_username",
+        "username-here",
+        "example",
+        "placeholder",
+        "mock-username"
+    ]
+    for keyword in dummy_keywords:
+        if keyword in url_lower:
+            return True
+            
+    # Check if the username segment in the path is generic or matches placeholder terms
+    match = re.search(r'/in/([^/?#]+)', url)
+    if match:
+        username = match.group(1).lower()
+        if username in ["username", "yourusername", "your-username", "your_username", "contributor"]:
+            return True
+    return False
+
+
 def extract_linkedin_url(body: str) -> str:
     # Requires a format like "LinkedIn: https://linkedin.com/in/username" 
     # to avoid accidentally extracting a random link from the PR body.
     match = re.search(r'(?i)LinkedIn(?: Profile(?: URL)?)?:\s*(https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+)', body)
     if match:
-        return match.group(1)
+        url = match.group(1)
+        if not is_dummy_linkedin_url(url):
+            return url
+        else:
+            print(f"⚠️ Ignored dummy/placeholder LinkedIn URL in PR body: {url}")
     return ""
 
 
@@ -149,9 +180,11 @@ def fetch_linkedin_from_github_profile(username: str) -> str:
             for account in accounts:
                 if account.get("provider") == "linkedin":
                     linkedin_url = account.get("url", "").strip()
-                    if linkedin_url:
+                    if linkedin_url and not is_dummy_linkedin_url(linkedin_url):
                         print(f"✅ Found LinkedIn URL on GitHub profile: {linkedin_url}")
                         return linkedin_url
+                    elif linkedin_url:
+                        print(f"⚠️ Ignored dummy/placeholder LinkedIn URL on GitHub profile: {linkedin_url}")
         else:
             print(f"⚠️ GitHub Social Accounts API returned status: {resp.status_code}")
     except Exception as e:
@@ -551,6 +584,11 @@ def send_to_make_webhook(post_text: str, pr: dict) -> None:
         "pr_number": pr["number"],
         "tier": tier,
     }
+
+    if "dry-run" in webhook_url.lower() or "mock" in webhook_url.lower():
+        print("🧪 Dry-run/Mock webhook URL detected. Skipping actual HTTP request to Make.com.")
+        print("Payload:", json.dumps(payload, indent=2))
+        return
 
     print("📤 Sending post to Make.com webhook...")
     print(f"   Webhook: {webhook_url[:50]}...")
