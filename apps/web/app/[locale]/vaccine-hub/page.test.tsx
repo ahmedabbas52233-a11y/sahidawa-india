@@ -216,7 +216,7 @@ describe("VaccineHubPage Integration Tests", () => {
             screen.getByText(/Poliomyelitis/i);
         });
 
-        let polioOption = screen.getByText(/Poliomyelitis/i);
+        const polioOption = screen.getByText(/Poliomyelitis/i);
         await user.click(polioOption);
 
         const dateInput = screen.getByLabelText(/birth date/i) as HTMLInputElement;

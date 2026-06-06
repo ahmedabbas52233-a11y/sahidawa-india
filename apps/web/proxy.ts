@@ -8,7 +8,7 @@ import { getSupabaseUrl, getSupabaseAnonKey } from "@/lib/env";
 const intlMiddleware = createMiddleware(routing);
 
 export default async function middleware(req: NextRequest) {
-    let res = intlMiddleware(req);
+    const res = intlMiddleware(req);
 
     const supabase = createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
         cookies: {
