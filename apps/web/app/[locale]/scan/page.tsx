@@ -1077,12 +1077,15 @@ export default function ScanPage() {
             input?.focus();
         }, 300);
     }, []);
-    const handleBarcodeScan = async (scannedText: string) => {
-        setIsVerifying(true);
-        setApiError(null);
-        await handleVerify(scannedText, "barcode");
-        setIsVerifying(false);
-    };
+    const handleBarcodeScan = useCallback(
+        async (scannedText: string) => {
+            setIsVerifying(true);
+            setApiError(null);
+            await handleVerify(scannedText, "barcode");
+            setIsVerifying(false);
+        },
+        [handleVerify]
+    );
 
     const handleScanAgain = async () => {
         if (ocrWorkerRef.current) {
