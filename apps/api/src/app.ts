@@ -32,7 +32,7 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
 // Execute configuration validation after import completes
 validateMlServiceConfig();
 
-if (process.env.NODE_ENV !== "development" && !process.env.CSRF_SECRET) {
+if (process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test" && !process.env.CSRF_SECRET) {
     logger.error("Missing CSRF_SECRET environment variable. The default fallback is predictable and insecure.");
     process.exit(1);
 }
@@ -205,7 +205,7 @@ app.use("/reports", reportsRouter);
 app.use("/api/pharmacies", pharmaciesRouter);
 app.use("/api/verify/batch", batchRouter);
 app.use("/api/verify", verifyRouter);
-app.use("/api/analytics", analyticsRoutes);
+app.use("/api/analytics", requireAuth, requireRole("admin", "moderator"), analyticsRoutes);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/v1/scan", scanRouter);
 app.use("/api/v1/lasa", lasaRouter);
