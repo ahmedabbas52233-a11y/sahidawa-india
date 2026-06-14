@@ -40,6 +40,29 @@
         "real_time": "REAL TIME",
         "alerts_description": "Stay updated with the latest medicine safety alerts and recalls."
     },
+    "ChildVaccinationTracker": {
+        "childTrackerTitle": "बाल टीकाकरण ट्रैकर",
+        "childTrackerSubtitle": "व्यक्तिगत राष्ट्रीय टीकाकरण अनुसूची देखने और पूर्ण किए गए टीकों को ट्रैक करने के लिए बच्चे की जानकारी दर्ज करें।",
+        "childReminderButton": "रिमाइंडर डाउनलोड करें",
+        "childNameLabel": "बच्चे का नाम",
+        "childNamePlaceholder": "बच्चे का नाम दर्ज करें",
+        "childDobLabel": "जन्म तिथि",
+        "childDefaultName": "बच्चा",
+        "childDobPrompt": "व्यक्तिगत टीकाकरण टाइमलाइन बनाने के लिए जन्म तिथि दर्ज करें।",
+        "childDobFutureError": "जन्म तिथि भविष्य की नहीं हो सकती।",
+        "childDobInvalidError": "मान्य जन्म तिथि दर्ज करें।",
+        "childProfileSummary": "बच्चे की प्रोफ़ाइल",
+        "scheduleSourceLabel": "अनुसूची स्रोत",
+        "childTimelineHeading": "व्यक्तिगत टाइमलाइन",
+        "whereApplicableBadge": "जहाँ लागू हो",
+        "dueDateLabel": "देय तिथि",
+        "officialTimingLabel": "आधिकारिक समय",
+        "completedStatus": "पूर्ण",
+        "dueStatus": "देय",
+        "overdueStatus": "विलंबित",
+        "upcomingStatus": "आगामी",
+        "markCompleteButton": "पूर्ण चिह्नित करें"
+    },
     "Navigation": {
         "how_it_works": "यह कैसे काम करता है",
         "alerts": "अलर्ट",
@@ -751,5 +774,13 @@
             "pregnancyHeading": "गर्भावस्था"
         },
         "disclaimer": "यह जानकारी शैक्षिक उद्देश्य के लिए है और पेशेवर चिकित्सा सलाह का विकल्प नहीं है।"
+    },
+    "Map": {
+        "errors": {
+            "denied": "लोकेशन एक्सेस की अनुमति नहीं दी गई। कृपया ब्राउज़र सेटिंग्स में इसे सक्षम करें।",
+            "unavailable": "लोकेशन की जानकारी उपलब्ध नहीं है।",
+            "timeout": "लोकेशन के अनुरोध की समय-सीमा समाप्त हो गई है।",
+            "generic": "आपकी लोकेशन प्राप्त करने में असमर्थ।"
+        }
     }
 }

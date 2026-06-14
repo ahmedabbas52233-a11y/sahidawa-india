@@ -1,5 +1,5 @@
 "use client";
-
+import { useTranslations } from "next-intl";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
     Search,
@@ -23,7 +23,7 @@ import PharmacyMap, {
     type MapBounds,
     type RiskHotspot,
 } from "./PharmacyMap";
-import PharmacyPanels from "./PharmacyPanels";
+import PharmacyPanels, { calculateTrustBreakdown } from "./PharmacyPanels";
 import { fetchPharmacies, fetchPharmaciesInBounds, type OverpassPharmacy } from "./overpassApi";
 import {
     fetchVerifiedPharmacies,
@@ -123,6 +123,8 @@ function toPharmacy(op: OverpassPharmacy & { _distanceFormatted?: string }): Pha
         coordinates: { lat: op.lat, lng: op.lng },
         address: op.address,
         phone: op.phone,
+        operatingHours: op.openingHours,
+        website: op.website,
     };
 }
 
@@ -256,14 +258,21 @@ type AdvancedFilters = {
     hasAddress: boolean;
     hasPhone: boolean;
     withinFiveKm: boolean;
+    lowRisk: boolean;
+    mediumRisk: boolean;
+    highRisk: boolean;
 };
 
 export default function PharmacyMapPage() {
+    const t = useTranslations("Map");
     const [activeFilter, setActiveFilter] = useState<"all" | "verified" | "govt" | "named">("all");
     const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
         hasAddress: false,
         hasPhone: false,
         withinFiveKm: false,
+        lowRisk: false,
+        mediumRisk: false,
+        highRisk: false,
     });
     const [showFilterPanel, setShowFilterPanel] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
@@ -498,7 +507,7 @@ export default function PharmacyMapPage() {
     // Geolocation
     const handleLocateUser = useCallback(() => {
         if (!navigator.geolocation) {
-            setLocationError("Geolocation is not supported by your browser");
+            setLocationError(t("errors.generic"));
             setTimeout(() => setLocationError(null), 3000);
             return;
         }
@@ -514,16 +523,16 @@ export default function PharmacyMapPage() {
             (err) => {
                 setIsLocating(false);
                 const messages: Record<number, string> = {
-                    1: "Location access denied. Please enable it in browser settings.",
-                    2: "Location information unavailable.",
-                    3: "Location request timed out.",
+                    1: t("errors.denied"),
+                    2: t("errors.unavailable"),
+                    3: t("errors.timeout"),
                 };
-                setLocationError(messages[err.code] || "Unable to get your location.");
+                setLocationError(messages[err.code] || t("errors.generic"));
                 setTimeout(() => setLocationError(null), 4000);
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
         );
-    }, [fetchNearby]);
+    }, [fetchNearby, t]);
 
     const handleMapReady = useCallback(() => {
         if (!initialFetchDone.current) {
@@ -554,6 +563,21 @@ export default function PharmacyMapPage() {
         if (advancedFilters.withinFiveKm) {
             list = list.filter((p) => typeof p.distanceKm === "number" && p.distanceKm <= 5);
         }
+
+        // Trust / Risk score filtering (Option A)
+        const hasRiskFilter =
+            advancedFilters.lowRisk || advancedFilters.mediumRisk || advancedFilters.highRisk;
+        if (hasRiskFilter) {
+            list = list.filter((p) => {
+                const breakdown = calculateTrustBreakdown(p);
+                const score = breakdown.score;
+                if (advancedFilters.lowRisk && score >= 80) return true;
+                if (advancedFilters.mediumRisk && score >= 50 && score < 80) return true;
+                if (advancedFilters.highRisk && score < 50) return true;
+                return false;
+            });
+        }
+
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
             list = list.filter(
@@ -754,6 +778,9 @@ export default function PharmacyMapPage() {
                                             hasAddress: false,
                                             hasPhone: false,
                                             withinFiveKm: false,
+                                            lowRisk: false,
+                                            mediumRisk: false,
+                                            highRisk: false,
                                         })
                                     }
                                     className="text-[11px] font-semibold text-(--color-text-secondary) transition-colors hover:text-(--color-text-primary)"
@@ -762,10 +789,37 @@ export default function PharmacyMapPage() {
                                 </button>
                             </div>
                             <div className="space-y-2">
+                                <p className="mt-1 text-[10px] font-bold tracking-wider text-(--color-text-secondary)/80 uppercase">
+                                    Location & Details
+                                </p>
                                 {[
                                     ["hasAddress", "Has address details"],
                                     ["hasPhone", "Has phone number"],
                                     ["withinFiveKm", "Within 5 km"],
+                                ].map(([key, label]) => (
+                                    <label
+                                        key={key}
+                                        className="flex cursor-pointer items-center justify-between rounded-xl bg-(--color-surface-muted) px-3 py-2 text-xs font-semibold text-(--color-text-secondary) hover:bg-(--color-border-muted)"
+                                    >
+                                        <span>{label}</span>
+                                        <input
+                                            type="checkbox"
+                                            checked={advancedFilters[key as keyof AdvancedFilters]}
+                                            onChange={() =>
+                                                updateAdvancedFilter(key as keyof AdvancedFilters)
+                                            }
+                                            className="h-4 w-4 accent-emerald-600"
+                                        />
+                                    </label>
+                                ))}
+
+                                <p className="mt-2 text-[10px] font-bold tracking-wider text-(--color-text-secondary)/80 uppercase">
+                                    Trust / Risk Level
+                                </p>
+                                {[
+                                    ["lowRisk", "🟢 Low Risk (Score ≥ 80%)"],
+                                    ["mediumRisk", "🟡 Medium Risk (Score 50-79%)"],
+                                    ["highRisk", "🔴 High Risk (Score < 50%)"],
                                 ].map(([key, label]) => (
                                     <label
                                         key={key}
