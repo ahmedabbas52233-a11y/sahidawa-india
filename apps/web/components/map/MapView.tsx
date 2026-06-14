@@ -192,6 +192,20 @@ export default function MapView() {
                 </button>
             </div>
 
+            <div className="rounded-lg border bg-white p-3 text-sm shadow-sm">
+                <div className="mb-2 font-semibold">Map Legend</div>
+
+                <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-green-600"></span>
+                    <span>Jan Aushadhi Kendra</span>
+                </div>
+
+                <div className="mt-1 flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-blue-600"></span>
+                    <span>Private Pharmacy</span>
+                </div>
+            </div>
+
             {/* Map */}
             <MapContainer
                 center={userLocation}
@@ -205,11 +219,15 @@ export default function MapView() {
 
                 {showPharmacies &&
                     pharmacies.map((p) => (
-                        <Marker key={`ph-${p.id}`} position={[p.lat, p.lng]} icon={greenIcon}>
+                        <Marker
+                            key={`ph-${p.id}`}
+                            position={[p.lat, p.lng]}
+                            icon={p.type === "Jan Aushadhi" ? greenIcon : blueIcon}
+                        >
                             <Popup>
                                 <strong>{p.name}</strong>
                                 <br />
-                                Type: {p.type}
+                                <strong>Type:</strong> {p.type}
                                 <br />
                                 <div className="flex items-center gap-1">
                                     <span>Address: {p.address}</span>
