@@ -74,7 +74,8 @@
         "scans": "स्कैन",
         "map": "मानचित्र",
         "profile": "प्रोफ़ाइल",
-        "language": "हिन्दी"
+        "language": "हिन्दी",
+        "more": "और देखें (More)"
     },
     "BackToTopButton": {
         "label": "ऊपर जाएँ"

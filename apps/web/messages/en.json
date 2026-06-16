@@ -55,7 +55,8 @@
         "scans": "Scans",
         "map": "Map",
         "profile": "Profile",
-        "language": "English"
+        "language": "English",
+        "more": "More"
     },
     "Scan": {
         "calculateSavings": "Calculate Savings",
