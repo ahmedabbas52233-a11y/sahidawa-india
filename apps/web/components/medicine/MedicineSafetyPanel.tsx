@@ -18,9 +18,7 @@ import {
     Users,
     Package,
     HeartPulse,
-    ThumbsUp,
     Info,
-    X,
     ChevronLeft,
     Syringe,
     FlaskConical,
@@ -38,6 +36,7 @@ import {
     type DietaryRule,
 } from "./MedicineSafetyData";
 import { fetchSafetyProfile } from "@/lib/medicineSafetyService";
+import { getSafetyProfile, type MedicineSafetyProfile, type AgeGroup } from "./MedicineSafetyData";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 type MedicineSafetyPanelProps = {
@@ -101,6 +100,8 @@ export function MedicineSafetyPanel({ searchQuery, onClose }: MedicineSafetyPane
             cancelled = true;
         };
     }, [searchQuery]);
+
+    const t = useTranslations("medicineSafety");
 
     const t = useTranslations("medicineSafety");
 

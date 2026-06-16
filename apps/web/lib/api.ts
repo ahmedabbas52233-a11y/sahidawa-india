@@ -6,7 +6,7 @@ export const API_BASE = configuredApiUrl.replace(/\/+$/, "");
 
 let csrfTokenCache: string | null = null;
 
-async function getCsrfToken(): Promise<string> {
+export async function getCsrfToken(): Promise<string> {
     if (csrfTokenCache) return csrfTokenCache;
     const res = await fetch(`${API_BASE}/api/csrf-token`, {
         credentials: "include",
@@ -34,6 +34,8 @@ export type ReportPayload = {
     pincode: string;
     latitude?: number;
     longitude?: number;
+    scannedBarcode?: string;
+    medicineId?: string;
 };
 
 export type SubmittedReport = {
@@ -139,13 +141,16 @@ export async function geocodePincode(
         return { latitude: lat, longitude: lng };
     } catch (error) {
         if (typeof window !== "undefined") {
-            console.warn(`[api] Geocoding pincode ${pincode} failed: ${error instanceof Error ? error.message : String(error)}`);
+            console.warn(
+                `[api] Geocoding pincode ${pincode} failed: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
         return null;
     }
 }
 
 export type VerifiedMedicine = {
+    id?: string;
     brand_name: string;
     generic_name: string;
     manufacturer: string;
@@ -153,6 +158,14 @@ export type VerifiedMedicine = {
     expiry_date: string | null;
     cdsco_approval_status: string;
     is_counterfeit_alert: boolean;
+    is_cdsco_verified?: boolean;
+    cdsco_match_score?: number;
+    matched_cdsco_product?: string | null;
+    matched_cdsco_manufacturer?: string | null;
+    product_match_score?: number;
+    manufacturer_match_score?: number;
+    dosage_form?: string | null;
+    composition?: string | null;
 };
 
 export type ScanMeta = {
@@ -163,8 +176,18 @@ export type ScanMeta = {
 };
 
 export type VerifyResult =
-    | { verified: true; medicine: VerifiedMedicine; scanMeta?: ScanMeta }
-    | { verified: false; message: string; scanMeta?: ScanMeta };
+    | {
+          verified: true;
+          medicine: VerifiedMedicine;
+          scanMeta?: ScanMeta;
+          batch_status?: "safe" | "recalled" | "unknown";
+      }
+    | {
+          verified: false;
+          message: string;
+          scanMeta?: ScanMeta;
+          batch_status?: "safe" | "recalled" | "unknown";
+      };
 
 export type VerifiedPharmacy = {
     name: string;
