@@ -53,71 +53,15 @@ async def verify_medicine_voice(audio: UploadFile = File(...)):
         # Get script name for detected language
         script = LANGUAGE_SCRIPT_MAP.get(detected_lang, "Latin")
 
-        # Use LangChain to verify medicine against CDSCO (mocked — replace with real DB/API call)
-        # In production: query your Supabase CDSCO table here instead
-        verification_result = await verify_with_cdsco(transcribed_text, detected_lang, script)
-
         return JSONResponse(content={
             "success": True,
             "transcribed": transcribed_text,
             "detected_language": detected_lang,
-            "script": script,
-            "verification": verification_result,
+            "script": script
         })
 
     finally:
         os.unlink(tmp_path)  # Clean up temp file
-
-
-async def verify_with_cdsco(medicine_name: str, language: str, script: str) -> dict:
-    """
-    Verifies medicine name against CDSCO database.
-    TODO: Replace mock with actual Supabase query.
-    """
-    # --- MOCK RESPONSE (replace with real DB query) ---
-    # In production, query: SELECT * FROM medicines WHERE name ILIKE %medicine_name%
-    mock_db = {
-        "paracetamol": {
-            "status": "verified",
-            "manufacturer": "Cipla Ltd.",
-            "category": "Analgesic / Antipyretic",
-            "cdsco_registered": True,
-            "warnings": [],
-        },
-        "crocin": {
-            "status": "verified",
-            "manufacturer": "GSK Consumer Healthcare",
-            "category": "Analgesic / Antipyretic",
-            "cdsco_registered": True,
-            "warnings": ["Do not exceed 4g/day"],
-        },
-    }
-
-    name_lower = medicine_name.lower()
-    match = next((v for k, v in mock_db.items() if k in name_lower), None)
-
-    if match:
-        return {
-            "medicine_name_original": medicine_name,
-            "medicine_name_english": medicine_name,
-            "medicine_name_regional": medicine_name,  # TODO: translate via Sarvam AI
-            "detected_language": language,
-            "script": script,
-            **match,
-        }
-
-    return {
-        "medicine_name_original": medicine_name,
-        "medicine_name_english": medicine_name,
-        "medicine_name_regional": medicine_name,
-        "status": "not_found",
-        "manufacturer": "Unknown",
-        "category": "Unknown",
-        "cdsco_registered": False,
-        "warnings": ["Medicine not found in CDSCO database. Consult a pharmacist."],
-        "detected_language": language,
-        "script": script,
-    }
 
 
 @router.get("/languages")
