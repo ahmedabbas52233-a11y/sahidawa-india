@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { SkeletonLoader } from "@/components/scanner/SkeletonLoader";
-import imageCompression from "browser-image-compression";
 import { uploadABHAVerification } from "@/lib/api/abha";
 import { Camera, Layers, Search, X, ScanLine, History } from "lucide-react";
 import { useMedicineVerification } from "@/hooks/useMedicineVerification";
