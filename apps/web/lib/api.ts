@@ -120,17 +120,24 @@ export async function submitReport(
     });
 }
 
+type GeocodeResult = {
+    latitude: number;
+    longitude: number;
+    city?: string;
+    state?: string;
+};
+
 export async function geocodePincode(
     pincode: string,
     signal?: AbortSignal
-): Promise<{ latitude: number; longitude: number } | null> {
+): Promise<GeocodeResult | null> {
     if (typeof window !== "undefined" && !window.navigator.onLine) {
         return null;
     }
     try {
         const url =
             `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(pincode)}` +
-            `&country=IN&format=json&limit=1`;
+            `&country=IN&format=json&addressdetails=1&limit=1`;
 
         let abortSignal = signal;
         if (!abortSignal) {
@@ -142,15 +149,27 @@ export async function geocodePincode(
             signal: abortSignal,
         });
         if (!r.ok) return null;
-        const arr = (await r.json()) as Array<{
+        type NominatimResult = {
             lat: string;
             lon: string;
-        }>;
+            address: {
+                city?: string;
+                town?: string;
+                village?: string;
+                municipality?: string;
+                county?: string;
+                state?: string;
+            };
+        };
+        const arr = (await r.json()) as NominatimResult[];
         if (!arr.length) return null;
-        const lat = parseFloat(arr[0].lat);
-        const lng = parseFloat(arr[0].lon);
+        const entry = arr[0];
+        const lat = parseFloat(entry.lat);
+        const lng = parseFloat(entry.lon);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-        return { latitude: lat, longitude: lng };
+        const city = entry.address?.city ?? entry.address?.town ?? entry.address?.village ?? entry.address?.municipality ?? entry.address?.county;
+        const state = entry.address?.state;
+        return { latitude: lat, longitude: lng, city, state };
     } catch (error) {
         if (typeof window !== "undefined") {
             console.warn(
