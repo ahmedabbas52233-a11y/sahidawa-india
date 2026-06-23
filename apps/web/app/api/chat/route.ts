@@ -159,6 +159,22 @@ export async function POST(req: Request) {
             );
         }
 
+        const geminiKey = process.env.GEMINI_API_KEY?.trim();
+
+        if (!geminiKey || geminiKey === "your_gemini_api_key") {
+            structuredLog({
+                log_level: "warn",
+                route: ROUTE,
+                meta: {
+                    reason: "missing_gemini_api_key",
+                },
+            });
+
+            return NextResponse.json(
+                { error: "AI services are currently unconfigured" },
+                { status: 500 }
+            );
+        }
         const ai = getAiClient();
         const { messages, mode, responseLanguage, locale } = await req.json();
         const latestMessageText = getLatestMessageText(messages);
