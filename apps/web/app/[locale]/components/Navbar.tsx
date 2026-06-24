@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import { MessageCircle } from "lucide-react";
-import { Link, usePathname } from "@/i18n/routing";
+import { Link, usePathname, useRouter } from "@/i18n/routing";
 import { useTranslations } from "next-intl";
 import LanguageSwitcher from "../LanguageSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
@@ -19,6 +19,7 @@ import MobileBottomNav from "./Navbar/MobileBottomNav";
 
 export default function Navbar() {
     const pathname = usePathname();
+    const router = useRouter();
     const tHome = useTranslations("Home");
     const { session, isLoading: authLoading } = useSession();
 
@@ -74,7 +75,8 @@ export default function Navbar() {
                     .replace(/^ +/, "")
                     .replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`);
             });
-            window.location.href = "/";
+            router.replace("/");
+            router.refresh();
         }
     };
 
