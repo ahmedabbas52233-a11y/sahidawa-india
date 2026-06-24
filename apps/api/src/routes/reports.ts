@@ -50,6 +50,7 @@ const createReportSchema = z.object({
     pharmacyName: z.string().min(2),
     address: z.string().min(5),
     city: z.string().min(2),
+    district: z.string().min(2).optional(),
     state: z.string().min(2),
     pincode: z.string().regex(/^\d{6}$/),
     latitude: z
@@ -90,6 +91,7 @@ reportsRouter.post(
         }
 
         const data = parsed.data;
+        const district = data.district ?? data.city;
 
         try {
             const rawIp =
@@ -105,7 +107,7 @@ reportsRouter.post(
                 city: data.city,
                 state: data.state,
                 pincode: data.pincode,
-                district: data.city,
+                district,
             };
 
             const validation = await validateReport(
@@ -127,7 +129,7 @@ reportsRouter.post(
                     city: data.city,
                     state: data.state,
                     pincode: data.pincode,
-                    district: data.city,
+                    district,
                     report_location: buildReportLocation(data.latitude, data.longitude),
                     reporter_id: req.user?.id ?? null,
                     ip_address: ipAddress,
