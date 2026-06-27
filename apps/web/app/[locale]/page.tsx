@@ -204,7 +204,7 @@ export default function SahiDawaHome() {
                         >
                             <button
                                 onClick={() => handleNavigation("scan")}
-                                className="group relative flex w-full transform-gpu cursor-pointer flex-col justify-center overflow-hidden rounded-xl"
+                                className="group relative flex w-full transform-gpu cursor-pointer flex-col justify-center overflow-hidden rounded-[2.5rem] border border-white/10 p-8 text-left text-white shadow-2xl shadow-emerald-900/20 transition-all duration-500 hover:-translate-y-2 hover:shadow-emerald-500/30 active:scale-[0.98] md:p-10"
                                 aria-label="Scan medicine"
                             >
                                 {/* Rich Depth Background */}
