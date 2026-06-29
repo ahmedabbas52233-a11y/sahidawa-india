@@ -71,7 +71,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: ⬇️ Checkout Code
-              uses: actions/checkout@v7
+              uses: actions/checkout@v4
 
             - name: ⚙️ Setup Python 3.12
               uses: actions/setup-python@v6
