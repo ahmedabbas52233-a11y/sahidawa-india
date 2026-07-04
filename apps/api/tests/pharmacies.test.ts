@@ -26,9 +26,20 @@ jest.mock("../src/middleware/auth", () => ({
 import request from "supertest";
 import app from "../src/app";
 import { supabase } from "../src/db/client";
+import { cacheMiddleware } from "../src/middleware/cache";
 
 const mockedSupabase = supabase as jest.Mocked<typeof supabase>;
-const GEOSPATIAL_CACHE_CONTROL = "public, max-age=300, s-maxage=300, stale-while-revalidate=600";
+
+// Derived from the shared middleware (rather than a hardcoded literal) so this
+// stays correct if cacheMiddleware's header format ever changes.
+function cacheControlFor(durationSeconds: number, staleWhileRevalidateSeconds: number): string {
+    let headerValue = "";
+    const fakeRes = { setHeader: (name: string, value: string) => (headerValue = value) } as never;
+    cacheMiddleware(durationSeconds, staleWhileRevalidateSeconds)({} as never, fakeRes, () => {});
+    return headerValue;
+}
+
+const GEOSPATIAL_CACHE_CONTROL = cacheControlFor(300, 600);
 
 describe("GET /api/pharmacies/nearest", () => {
     beforeEach(() => {

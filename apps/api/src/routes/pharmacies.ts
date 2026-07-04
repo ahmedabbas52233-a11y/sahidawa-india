@@ -8,6 +8,7 @@ import { limiter } from "../middleware/rateLimit";
 import { requireAuth, AuthenticatedRequest } from "../middleware/auth";
 import { FormattedPharmacy, PharmacyRpcResult } from "../types/pharmacy.types";
 import { redisCache } from "../middleware/redisCache";
+import { cacheMiddleware } from "../middleware/cache";
 import multer from "multer";
 import { buildOrConditions } from "../utils/db";
 import Papa from "papaparse";
@@ -20,14 +21,6 @@ const router = Router();
 
 /** Maximum number of pharmacies returned per request */
 const MAX_RESULTS = 200;
-
-const GEOSPATIAL_CACHE_CONTROL = "public, max-age=300, s-maxage=300, stale-while-revalidate=600";
-
-const setGeospatialCacheHeaders = (res: Response) => {
-    res.setHeader("Cache-Control", GEOSPATIAL_CACHE_CONTROL);
-};
-
-import { cacheMiddleware } from "../middleware/cache";
 
 // ── TypeScript interfaces ────────────────────────────────────────────────────
 
@@ -1002,7 +995,6 @@ router.get(
                         timezone: p.timezone ?? null,
                     }))
                     .slice(0, MAX_RESULTS);
-                setGeospatialCacheHeaders(res);
                 return res.json({
                     pharmacies,
                     syncedAt,
@@ -1085,7 +1077,6 @@ router.get(
                 .slice(0, MAX_RESULTS)
                 .map(({ coords, ...rest }) => rest);
 
-            setGeospatialCacheHeaders(res);
             res.json({
                 pharmacies,
                 syncedAt,
