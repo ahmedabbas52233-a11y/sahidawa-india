@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from "express";
 import { z } from "zod";
 import { supabase } from "../db/client";
+import { uuidSchema } from "../utils/validation";
 import { AuthenticatedRequest, optionalAuth, requireAuth, requireRole } from "../middleware/auth";
 import { reportLimiter } from "../middleware/rateLimit";
 import {
@@ -71,7 +72,7 @@ const createReportSchema = z
             .max(180, "Longitude must be between -180 and 180")
             .optional(),
         scannedBarcode: z.string().optional(),
-        medicineId: z.string().uuid().optional(),
+        medicineId: uuidSchema.optional(),
     })
     .superRefine((data, ctx) => {
         const validDistricts =
@@ -140,7 +141,8 @@ reportsRouter.post(
                 req.user?.id ?? null
             );
 
-            const { data: report, error } = await supabase
+            const reportHash = computeReportHash(validationPayload);
+            const { data: reports, error } = await supabase
                 .from("counterfeit_reports")
                 .upsert(
                     {
@@ -158,7 +160,7 @@ reportsRouter.post(
                         report_location: buildReportLocation(data.latitude, data.longitude),
                         reporter_id: req.user?.id ?? null,
                         ip_address: ipAddress,
-                        report_hash: computeReportHash(validationPayload),
+                        report_hash: reportHash,
                         risk_score: validation.riskScore,
                         is_escalated: !validation.passed,
                         duplicate_group_id: validation.duplicateGroupId ?? null,
@@ -170,12 +172,43 @@ reportsRouter.post(
                 )
                 .select(
                     "id, reported_brand_name, status, district, created_at, scanned_barcode, medicine_id"
-                )
-                .single();
+                );
 
             if (error) {
-                res.status(500).json({ error: "Failed to submit counterfeit report" });
+                res.status(500).json({
+                    error: "Failed to submit counterfeit report",
+                });
                 return;
+            }
+
+            let report = reports?.[0];
+
+            let statusCode = 201;
+            if (!report) {
+                const { data: existingReport, error: fetchError } = await supabase
+                    .from("counterfeit_reports")
+                    .select(
+                        "id, reported_brand_name, status, district, created_at, scanned_barcode, medicine_id"
+                    )
+                    .eq("report_hash", reportHash)
+                    .maybeSingle();
+
+                if (fetchError) {
+                    res.status(500).json({
+                        error: "Failed to fetch existing report",
+                    });
+                    return;
+                }
+
+                if (!existingReport) {
+                    res.status(500).json({
+                        error: "Existing report could not be retrieved",
+                    });
+                    return;
+                }
+
+                report = existingReport;
+                statusCode = 200;
             }
 
             const response: Record<string, unknown> = { report };
@@ -189,7 +222,7 @@ reportsRouter.post(
                 };
             }
 
-            res.status(201).json(response);
+            res.status(statusCode).json(response);
         } catch (err) {
             next(err);
         }
@@ -317,6 +350,12 @@ reportsRouter.patch(
     requireAuth,
     requireRole("admin"),
     async (req, res: Response) => {
+        const parsedId = uuidSchema.safeParse(req.params.id);
+        if (!parsedId.success) {
+            res.status(400).json({ error: "Invalid UUID format" });
+            return;
+        }
+
         const { status } = req.body as { status?: string };
         const allowedStatuses = ["pending", "verified_fake", "false_alarm"];
 
@@ -334,16 +373,21 @@ reportsRouter.patch(
                 .from("counterfeit_reports")
                 .select("id")
                 .eq("id", req.params.id)
-                .single();
+                .maybeSingle();
 
             if (fetchError || !existing) {
                 res.status(404).json({ error: "Report not found" });
                 return;
             }
 
+            const updatePayload: Record<string, unknown> = { status };
+            if (status === "verified_fake" || status === "false_alarm") {
+                updatePayload.is_escalated = false;
+            }
+
             const { data, error } = await supabase
                 .from("counterfeit_reports")
-                .update({ status })
+                .update(updatePayload)
                 .eq("id", req.params.id)
                 .select()
                 .single();

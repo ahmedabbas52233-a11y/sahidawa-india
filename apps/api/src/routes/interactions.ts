@@ -4,6 +4,7 @@ import { supabase, dbConfig } from "../db/client";
 import logger from "../utils/logger";
 import { escapePostgrest } from "../utils/db";
 import { interactionCheckLimiter } from "../middleware/rateLimit";
+import zlib from "zlib";
 
 const router = Router();
 
@@ -15,7 +16,11 @@ interface MedicineLookup {
     generic_name: string;
 }
 
-type InteractionRecord = LocalInteraction & { id?: string };
+type InteractionRecord = LocalInteraction & {
+    id?: string;
+    last_updated_at?: string;
+    data_version?: string;
+};
 
 const checkSchema = z.object({
     medicines: z
@@ -36,26 +41,20 @@ export function buildInteractionPairFilter(a: string, b: string): string {
 }
 
 // Brand name to generic name static mapping for local offline fallback
-const localBrandMap: Record<string, string> = {
-    crocin: "paracetamol",
-    calpol: "paracetamol",
-    dolo: "paracetamol",
-    dolo650: "paracetamol",
-    paracetamol: "paracetamol",
-    coumadin: "warfarin",
-    warfarin: "warfarin",
-    aspirin: "aspirin",
-    disprin: "aspirin",
-    ibuprofen: "ibuprofen",
-    brufen: "ibuprofen",
-    viagra: "sildenafil",
-    sildenafil: "sildenafil",
-    nitroglycerin: "nitroglycerin",
-    angised: "nitroglycerin",
-    lipitor: "atorvastatin",
-    atorvastatin: "atorvastatin",
-    clarithromycin: "clarithromycin",
-};
+// Compressed as a base64 gzipped JSON to reduce bundle size and memory footprint.
+const GZIPPED_BRAND_MAP_B64 =
+    "H4sIAAAAAAAACm2RSwrDMAxE76K1F920i9xGsZ1UIFtGdlJC6d1Lako+zm7mDZIG9AarYilCBwkVrS8YhMGARU7CDXbCcgkf91vD967ZL1NA9zv8Qh1QKYLZ5IFiTlThXxlwlNOZUT8llcGvdNMGep1aOBOOitBBJnY+4kBrrZ05JZGKysiL9fXs0RvAOFL27iJhSlRE16pFdMZcsNSRvW1Sy6hUniphqQ86gc8X5Fdb2rwBAAA=";
+
+let lazyBrandMap: Record<string, string> | null = null;
+
+function getLocalBrandMap(): Record<string, string> {
+    if (!lazyBrandMap) {
+        const buffer = Buffer.from(GZIPPED_BRAND_MAP_B64, "base64");
+        const decompressed = zlib.gunzipSync(buffer).toString("utf-8");
+        lazyBrandMap = JSON.parse(decompressed);
+    }
+    return lazyBrandMap!;
+}
 
 // Common clinical drug-drug interactions for offline fallback
 interface LocalInteraction {
@@ -79,6 +78,8 @@ interface MatchedInteraction {
     clinical_recommendation: string;
     source: string;
     verified: boolean;
+    last_updated_at?: string;
+    disclaimer?: string;
 }
 
 const localInteractions: LocalInteraction[] = [
@@ -129,6 +130,39 @@ const localInteractions: LocalInteraction[] = [
         source: "DrugBank",
     },
 ];
+
+// Runtime interaction cache (seeded from static fallback)
+let cachedInteractions: LocalInteraction[] = [...localInteractions];
+
+async function warmInteractionCache() {
+    try {
+        const { data, error } = await supabase.from("drug_interactions").select("*");
+
+        if (error) {
+            logger.warn("Interaction cache warm failed — using static fallback", {
+                error: error.message,
+            });
+            return;
+        }
+
+        if (data && data.length > 0) {
+            cachedInteractions = data as unknown as LocalInteraction[];
+        }
+    } catch (err) {
+        logger.warn("Interaction cache warm failed — using static fallback", {
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
+}
+
+warmInteractionCache();
+
+setInterval(
+    () => {
+        void warmInteractionCache();
+    },
+    24 * 60 * 60 * 1000
+);
 
 function displayMedicineName(medicine: MedicineLookup): string {
     return medicine.brand_name?.trim() || medicine.generic_name;
@@ -196,8 +230,14 @@ function indexInteractions(interactions: InteractionRecord[]): Map<string, Inter
 }
 
 function getLocalInteractionsForGenerics(genericNames: string[]): InteractionRecord[] {
-    const selectedGenerics = new Set(genericNames);
-    return localInteractions.filter(
+    const selectedGenerics = new Set(
+        genericNames.map((name) => {
+            const normalized = normalizeGenericName(name);
+            return getLocalBrandMap()[normalized] ?? normalized;
+        })
+    );
+
+    return cachedInteractions.filter(
         (interaction) =>
             selectedGenerics.has(interaction.drug_a_id) &&
             selectedGenerics.has(interaction.drug_b_id)
@@ -326,6 +366,10 @@ router.get("/", interactionCheckLimiter, async (req: Request, res: Response) => 
                     mechanism: match?.mechanism || "No interaction mechanism is documented.",
                     source: match?.source || "SahiDawa interaction checker",
                     verified: !isFallback,
+                    disclaimer: isFallback
+                        ? "⚠️ Using offline interaction database. Data may be outdated. Consult a pharmacist."
+                        : undefined,
+                    last_updated_at: match?.last_updated_at,
                 });
             }
         }
@@ -339,22 +383,38 @@ router.get("/", interactionCheckLimiter, async (req: Request, res: Response) => 
 });
 
 /**
- * Resolves a medicine input string (brand name, generic name, or ID) to its generic name.
+ * Normalizes brand names for offline fallback by removing dosages, units, and punctuation.
  */
-async function resolveToGeneric(input: string): Promise<{ input: string; generic: string }> {
-    const cleanInput = input.trim();
-    const lowerInput = cleanInput.toLowerCase();
-    let dbFailed = dbConfig?.isSupabaseOffline;
-    let genericName = cleanInput;
+function normalizeOfflineBrandName(input: string): string {
+    return input
+        .toLowerCase()
+        .replace(/\b(500|650|500mg|650mg|mg)\b/g, "")
+        .replace(/[\s\-_,.]+/g, "");
+}
 
-    if (!dbFailed) {
+/**
+ * Resolves a list of medicine input strings to their generic names in a single batched query.
+ */
+async function resolveMedicinesToGenerics(
+    inputs: string[]
+): Promise<Array<{ input: string; generic: string }>> {
+    const cleanInputs = inputs.map((i) => i.trim()).filter(Boolean);
+    let dbFailed = dbConfig?.isSupabaseOffline;
+
+    // Default each input to itself
+    const resultsMap = new Map<string, string>();
+    for (const input of cleanInputs) {
+        resultsMap.set(input.toLowerCase(), input);
+    }
+
+    if (!dbFailed && cleanInputs.length > 0) {
         try {
+            // Build a single massive OR query combining all the resolution filters
+            const orQuery = cleanInputs.map(buildMedicineResolutionFilter).join(",");
             const { data, error } = await supabase
                 .from("medicines")
                 .select("brand_name, generic_name")
-                .or(buildMedicineResolutionFilter(cleanInput))
-                .limit(1)
-                .maybeSingle();
+                .or(orQuery);
 
             if (error) {
                 dbFailed = true;
@@ -365,8 +425,19 @@ async function resolveToGeneric(input: string): Promise<{ input: string; generic
                 ) {
                     if (dbConfig) dbConfig.isSupabaseOffline = true;
                 }
-            } else if (data && data.generic_name) {
-                genericName = data.generic_name;
+            } else if (data) {
+                // Match the returned DB rows back to the inputs
+                for (const input of cleanInputs) {
+                    const lowerInput = input.toLowerCase();
+                    const match = data.find(
+                        (d) =>
+                            d.brand_name?.toLowerCase().includes(lowerInput) ||
+                            d.generic_name?.toLowerCase().includes(lowerInput)
+                    );
+                    if (match && match.generic_name) {
+                        resultsMap.set(lowerInput, match.generic_name);
+                    }
+                }
             }
         } catch (dbErr: unknown) {
             dbFailed = true;
@@ -382,14 +453,20 @@ async function resolveToGeneric(input: string): Promise<{ input: string; generic
     }
 
     if (dbFailed) {
-        // Fallback to local static map
-        const mapped = localBrandMap[lowerInput.replace(/\s+/g, "")];
-        if (mapped) {
-            genericName = mapped;
+        // Fallback to local static map for all inputs
+        for (const input of cleanInputs) {
+            const normalizedForOffline = normalizeOfflineBrandName(input);
+            const mapped = getLocalBrandMap()[normalizedForOffline];
+            if (mapped) {
+                resultsMap.set(input.toLowerCase(), mapped);
+            }
         }
     }
 
-    return { input: cleanInput, generic: genericName };
+    return cleanInputs.map((input) => ({
+        input,
+        generic: resultsMap.get(input.toLowerCase()) || input,
+    }));
 }
 
 /**
@@ -462,14 +539,15 @@ router.post("/check", interactionCheckLimiter, async (req: Request, res: Respons
     const { medicines } = parsed.data;
 
     try {
-        // 1. Resolve all inputs to generic names in parallel
-        const resolvedList: Array<{ input: string; generic: string }> = await Promise.all(
-            medicines.map((medicine) => resolveToGeneric(medicine))
-        );
+        // 1. Resolve all inputs to generic names in a single batched query
+        const resolvedList: Array<{ input: string; generic: string }> =
+            await resolveMedicinesToGenerics(medicines);
 
         const genericToOriginalMap = new Map<string, string>();
         resolvedList.forEach((r) => {
-            genericToOriginalMap.set(r.generic.toLowerCase(), r.input);
+            if (!genericToOriginalMap.has(r.generic.toLowerCase())) {
+                genericToOriginalMap.set(r.generic.toLowerCase(), r.input);
+            }
         });
 
         const resolvedGenerics = Array.from(
@@ -509,6 +587,10 @@ router.post("/check", interactionCheckLimiter, async (req: Request, res: Respons
                             "Consult a physician before combining.",
                         source: match.source || "Clinical Literature",
                         verified: !isFallback,
+                        disclaimer: isFallback
+                            ? "⚠️ Using offline interaction database. Data may be outdated. Consult a pharmacist."
+                            : undefined,
+                        last_updated_at: (match as any).last_updated_at,
                     });
                 }
             }

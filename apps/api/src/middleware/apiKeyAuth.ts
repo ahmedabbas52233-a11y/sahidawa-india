@@ -1,7 +1,10 @@
 import { Request, Response, NextFunction } from "express";
-import crypto from "crypto";
+import crypto, { pbkdf2 } from "crypto";
+import { promisify } from "util";
 import { supabase } from "../db/client";
 import logger from "../utils/logger";
+
+const pbkdf2Async = promisify(pbkdf2);
 
 export interface ApiKeyInfo {
     keyId: string;
@@ -21,15 +24,22 @@ export const requireApiKey = async (req: ApiKeyRequest, res: Response, next: Nex
         return;
     }
 
-    const keyHash = crypto
-        .pbkdf2Sync(apiKey, "sahidawa-api-key-v1", 100000, 64, "sha512")
-        .toString("hex");
+    // Use the async pbkdf2 variant to avoid blocking the Node.js event loop.
+    // pbkdf2Sync with 100k iterations can stall the server for 200-500ms per
+    // request, creating a CPU-based DoS vector. The async version offloads the
+    // computation to libuv's thread pool, keeping the event loop responsive.
+    const [keyId, secret] = apiKey.split(".");
+
+    if (!keyId || !secret) {
+        res.status(401).json({ error: "Invalid API key format" });
+        return;
+    }
 
     try {
         const { data, error } = await supabase
             .from("api_keys")
-            .select("id, caller_name, scopes, is_active")
-            .eq("key_hash", keyHash)
+            .select("id, caller_name, scopes, is_active, key_hash, key_salt")
+            .eq("id", keyId)
             .maybeSingle();
 
         if (error) {
@@ -38,7 +48,23 @@ export const requireApiKey = async (req: ApiKeyRequest, res: Response, next: Nex
             return;
         }
 
-        if (!data || !data.is_active) {
+        if (!data || !data.is_active || !data.key_salt) {
+            res.status(401).json({ error: "Invalid or inactive API key" });
+            return;
+        }
+
+        const computedHashBuffer = await pbkdf2Async(secret, data.key_salt, 100000, 64, "sha512");
+        const computedHash = computedHashBuffer.toString("hex");
+        const storedHash = data.key_hash;
+
+        const computedBuffer = Buffer.from(computedHash, "hex");
+        const storedBuffer = Buffer.from(storedHash, "hex");
+
+        const isValid =
+            computedBuffer.length === storedBuffer.length &&
+            crypto.timingSafeEqual(computedBuffer, storedBuffer);
+
+        if (!isValid) {
             res.status(401).json({ error: "Invalid or inactive API key" });
             return;
         }
