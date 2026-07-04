@@ -1109,24 +1109,35 @@ router.post(
             // Strip UTF-8 BOM if present
             const fileContent = rawFileContent.replace(/^\uFEFF/, "");
 
-            const { data: pharmacy, error: pharmError } = await supabase
-                .from("pharmacies")
-                .select("id")
-                .eq("created_by", req.user.id)
-                .maybeSingle();
+            const pharmacyId = req.body.pharmacyId || req.query.pharmacyId;
 
-            if (pharmError || !pharmacy) {
+            let query = supabase.from("pharmacies").select("id").eq("created_by", req.user.id);
+
+            if (pharmacyId) {
+                query = query.eq("id", pharmacyId);
+            } else {
+                query = query.order("created_at", { ascending: false });
+            }
+
+            const { data: pharmacies, error: pharmError } = await query;
+
+            if (pharmError || !pharmacies || pharmacies.length === 0) {
                 res.status(404).json({
                     error: "No registered pharmacy found for this authorized user.",
                 });
                 return;
             }
 
-            // Incremental parsing using the reusable helper (pharmacyId is already known)
-            const { rowsToInsert, failedRows, totalRows } = await parseCsvIncremental(
-                fileContent,
-                pharmacy.id
-            );
+            const pharmacy = pharmacies[0];
+
+            // Parse CSV with papaparse — handles quoted fields, embedded commas,
+            // escaped/nested quotes, and inconsistent line endings correctly
+            const parseResult = Papa.parse<Record<string, string>>(fileContent, {
+                header: true,
+                skipEmptyLines: true,
+                transformHeader: (h) => h.trim().toLowerCase(),
+                transform: (v) => v.trim(),
+            });
 
             if (totalRows === 0) {
                 res.status(400).json({ error: "The file appears empty or is missing rows." });
