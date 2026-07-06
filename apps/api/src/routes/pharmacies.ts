@@ -1133,14 +1133,11 @@ router.post(
 
             const pharmacy = pharmacies[0];
 
-            // Parse CSV with papaparse — handles quoted fields, embedded commas,
-            // escaped/nested quotes, and inconsistent line endings correctly
-            const parseResult = Papa.parse<Record<string, string>>(fileContent, {
-                header: true,
-                skipEmptyLines: true,
-                transformHeader: (h) => h.trim().toLowerCase(),
-                transform: (v) => v.trim(),
-            });
+            // Incremental parsing using the reusable helper (pharmacyId is already known)
+            const { rowsToInsert, failedRows, totalRows } = await parseCsvIncremental(
+                fileContent,
+                pharmacy.id
+            );
 
             if (totalRows === 0) {
                 res.status(400).json({ error: "The file appears empty or is missing rows." });
