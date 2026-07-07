@@ -6,7 +6,6 @@
  * Tech: React Hook Form · Zod · @hookform/resolvers · Framer Motion · Tailwind CSS
  * Design: SahiDawa modern aesthetic — emerald accents, deep navy header, rounded corners
  */
-import { enqueueReport } from "@/lib/offline/queue";
 import { handleApiError } from "@/lib/apiErrorHandler";
 import React, { useState, useEffect, useId, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
@@ -961,23 +960,6 @@ export default function ReportWizard() {
         setSubmitting(true);
         setSubmitErr(null);
 
-        // Check for offline state first, before any network requests
-        if (typeof navigator !== "undefined" && !navigator.onLine) {
-            try {
-                await geocodePincode(data.pincode).catch(() => null);
-                await enqueueReport({ reportData: data });
-                setQueuedOffline(true);
-                setPendingCount((c) => c + 1);
-                setDone(true);
-            } catch (queueErr) {
-                console.error("Failed to queue report offline:", queueErr);
-                setSubmitErr("You're offline and the report could not be saved locally.");
-            } finally {
-                setSubmitting(false);
-            }
-            return;
-        }
-
         let token: string | undefined = undefined;
         if (supabase) {
             try {
@@ -990,7 +972,8 @@ export default function ReportWizard() {
             }
         }
 
-        if (typeof navigator !== "undefined" && (!navigator.onLine || isNetworkError)) {
+        // If already offline, skip the network attempt entirely
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
             try {
                 const geo = await geocodePincode(data.pincode).catch(() => null);
                 await queueReport({ ...data, ...(geo ?? {}) });
@@ -1003,7 +986,6 @@ export default function ReportWizard() {
             } catch (queueErr) {
                 console.error("Failed to queue report offline:", queueErr);
                 setSubmitErr(t("wizard.toasts.offlineQueueFailed"));
-
                 await handleApiError(queueErr, t("wizard.toasts.offlineQueueFailed"));
             } finally {
                 setSubmitting(false);
@@ -1045,9 +1027,9 @@ export default function ReportWizard() {
         } finally {
             setSubmitting(false);
         }
-        };
+    };
 
-// Full reset
+    // Full reset
     const handleReset = () => {
         images.forEach((i) => URL.revokeObjectURL(i.preview));
         setImages([]);
