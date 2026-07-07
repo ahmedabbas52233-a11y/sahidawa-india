@@ -8,7 +8,7 @@
  */
 import { enqueueReport } from "@/lib/offline/queue";
 import { handleApiError } from "@/lib/apiErrorHandler";
-import React, { useState, useEffect, useId, useMemo } from "react";
+import React, { useState, useEffect, useId, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useForm, FormProvider, useFormContext } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -961,6 +961,23 @@ export default function ReportWizard() {
         setSubmitting(true);
         setSubmitErr(null);
 
+        // Check for offline state first, before any network requests
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+            try {
+                await geocodePincode(data.pincode).catch(() => null);
+                await enqueueReport({ reportData: data });
+                setQueuedOffline(true);
+                setPendingCount((c) => c + 1);
+                setDone(true);
+            } catch (queueErr) {
+                console.error("Failed to queue report offline:", queueErr);
+                setSubmitErr("You're offline and the report could not be saved locally.");
+            } finally {
+                setSubmitting(false);
+            }
+            return;
+        }
+
         let token: string | undefined = undefined;
         if (supabase) {
             try {
@@ -971,6 +988,7 @@ export default function ReportWizard() {
             } catch {
                 // ignore if supabase is not configured
             }
+        }
 
         if (typeof navigator !== "undefined" && (!navigator.onLine || isNetworkError)) {
             try {
@@ -1021,16 +1039,15 @@ export default function ReportWizard() {
                 }
             }
 
-            const errorMsg =
-                e instanceof Error ? e.message : t("wizard.toasts.submissionFailedGeneric");
-            setSubmitErr(errorMsg);
-            toast.error(errorMsg);
+            const errorMsg = await handleApiError(e, t("wizard.toasts.submissionFailedGeneric"));
+            setSubmitErr(errorMsg ?? t("wizard.toasts.submissionFailedGeneric"));
+            toast.error(errorMsg ?? t("wizard.toasts.submissionFailedGeneric"));
         } finally {
             setSubmitting(false);
         }
-    };
+        };
 
-    // Full reset
+// Full reset
     const handleReset = () => {
         images.forEach((i) => URL.revokeObjectURL(i.preview));
         setImages([]);
@@ -1179,10 +1196,15 @@ export default function ReportWizard() {
                                                 <>
                                                     {t("wizard.nav.submit")} <Icon.Send />
                                                 </>
-)}
-            </button>
-        </div>
-    </form>
-</FormProvider>
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </form>
+        </FormProvider>
     );
 }
