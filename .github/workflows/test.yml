@@ -121,5 +121,5 @@ jobs:
               run: |
                   FILES="${{ steps.changed-files.outputs.all_changed_files }}"
                   if [ -n "$FILES" ]; then
-                      npx prettier --ignore-unknown --check $FILES || echo "Prettier found issues. Ignoring failure as requested."
+                      npx prettier --ignore-unknown --check $FILES
                   fi

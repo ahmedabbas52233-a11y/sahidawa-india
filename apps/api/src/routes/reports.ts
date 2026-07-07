@@ -11,6 +11,7 @@ import {
 } from "../services/reportValidation.service";
 import { triggerRecallAlert } from "../services/notifications";
 import logger from "../utils/logger";
+import dns from "dns/promises";
 
 const reportsRouter = Router();
 const DEFAULT_ADMIN_REPORTS_LIMIT = 20;
@@ -33,12 +34,26 @@ const BLOCKED_IMAGE_URL_PATTERNS = [
     /^::ffff:/i,
 ];
 
-function isPublicImageUrl(rawUrl: string): boolean {
+async function isPublicImageUrl(rawUrl: string): Promise<boolean> {
     try {
         const { protocol, hostname } = new URL(rawUrl);
         if (protocol !== "https:" && protocol !== "http:") return false;
         const normalized = hostname.replace(/^\[|\]$/g, "");
-        return !BLOCKED_IMAGE_URL_PATTERNS.some((p) => p.test(normalized));
+
+        // Initial static regex check
+        if (BLOCKED_IMAGE_URL_PATTERNS.some((p) => p.test(normalized))) {
+            return false;
+        }
+
+        // DNS Resolution for SSRF Protection against DNS rebinding
+        const { address } = await dns.lookup(normalized);
+
+        // Check resolved IP address against blocked patterns
+        if (BLOCKED_IMAGE_URL_PATTERNS.some((p) => p.test(address))) {
+            return false;
+        }
+
+        return true;
     } catch {
         return false;
     }
@@ -110,7 +125,7 @@ reportsRouter.post(
     reportLimiter,
     optionalAuth,
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-        const parsed = createReportSchema.safeParse(req.body);
+        const parsed = await createReportSchema.safeParseAsync(req.body);
 
         if (!parsed.success) {
             res.status(400).json({
