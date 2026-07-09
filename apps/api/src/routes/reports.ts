@@ -11,55 +11,27 @@ import {
 } from "../services/reportValidation.service";
 import { triggerRecallAlert } from "../services/notifications";
 import logger from "../utils/logger";
+import { validateOutboundUrl } from "../utils/security/urlValidator";
 
 const reportsRouter = Router();
 const DEFAULT_ADMIN_REPORTS_LIMIT = 20;
 const MAX_ADMIN_REPORTS_LIMIT = 100;
 
-// Blocked hostname patterns for image URL SSRF protection.
-// z.string().url() only validates URL format, not destination.
-// An attacker could supply cloud metadata or internal service URLs that may be
-// fetched server-side when the image is processed.
-const BLOCKED_IMAGE_URL_PATTERNS = [
-    /^localhost$/i,
-    /^127\./,
-    /^10\./,
-    /^172\.(1[6-9]|2\d|3[01])\./,
-    /^192\.168\./,
-    /^169\.254\./,
-    /^::1$/,
-    /^fc00:/i,
-    /^fe80:/i,
-];
-
-function isPublicImageUrl(rawUrl: string): boolean {
-    try {
-        const { protocol, hostname } = new URL(rawUrl);
-        if (protocol !== "https:" && protocol !== "http:") return false;
-        return !BLOCKED_IMAGE_URL_PATTERNS.some((p) => p.test(hostname));
-    } catch {
-        return false;
-    }
-}
-
-const safeImageUrl = z.string().url().refine(isPublicImageUrl, {
-    message:
-        "Image URL must use http(s) and must not point to a private, loopback, or link-local address",
-});
+const safeImageUrl = z
+    .string()
+    .url()
+    .refine(async (v) => await validateOutboundUrl(v), {
+        message:
+            "Image URL must use http(s) and must not point to a private, loopback, or link-local address",
+    });
 
 import { INDIAN_STATES_AND_DISTRICTS } from "../constants/administrativeMap";
+import { getBaseReportSchema } from "@sahidawa/validators";
 
-const createReportSchema = z
-    .object({
-        medicineName: z.string().min(2),
-        manufacturer: z.string().min(2),
-        description: z.string().min(20),
+const createReportSchema = getBaseReportSchema()
+    .extend({
         images: z.array(safeImageUrl).min(1),
-        pharmacyName: z.string().min(2),
-        address: z.string().min(5),
-        city: z.string().min(2),
         district: z.string().min(2).optional(),
-        state: z.string().min(2),
         pincode: z.string().regex(/^\d{6}$/),
         latitude: z
             .number()
@@ -71,7 +43,6 @@ const createReportSchema = z
             .min(-180, "Longitude must be between -180 and 180")
             .max(180, "Longitude must be between -180 and 180")
             .optional(),
-        scannedBarcode: z.string().optional(),
         medicineId: uuidSchema.optional(),
     })
     .superRefine((data, ctx) => {
@@ -108,7 +79,7 @@ reportsRouter.post(
     reportLimiter,
     optionalAuth,
     async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-        const parsed = createReportSchema.safeParse(req.body);
+        const parsed = await createReportSchema.safeParseAsync(req.body as unknown);
 
         if (!parsed.success) {
             res.status(400).json({

@@ -21,6 +21,47 @@ const hasRedisCredentials =
     Boolean(process.env.UPSTASH_REDIS_REST_URL) && Boolean(process.env.UPSTASH_REDIS_REST_TOKEN);
 
 const redis = hasRedisCredentials ? Redis.fromEnv() : null;
+const RATE_LIMIT_KEY_PATTERN = "upstash_ratelimit_*";
+const SCAN_COUNT = 100;
+const MAX_SCAN_KEYS = 5000;
+
+async function scanRateLimitKeys(redisClient: Redis): Promise<{
+    keys: string[];
+    scannedKeys: number;
+    truncated: boolean;
+}> {
+    const keys: string[] = [];
+    let cursor = "0";
+
+    do {
+        const [nextCursor, batch] = await redisClient.scan(cursor, {
+            match: RATE_LIMIT_KEY_PATTERN,
+            count: SCAN_COUNT,
+        });
+
+        cursor = String(nextCursor);
+        const remainingCapacity = MAX_SCAN_KEYS - keys.length;
+        const batchExceedsCapacity = batch.length > remainingCapacity;
+
+        if (remainingCapacity > 0) {
+            keys.push(...batch.slice(0, remainingCapacity));
+        }
+
+        if (keys.length >= MAX_SCAN_KEYS && (cursor !== "0" || batchExceedsCapacity)) {
+            return {
+                keys,
+                scannedKeys: keys.length,
+                truncated: true,
+            };
+        }
+    } while (cursor !== "0");
+
+    return {
+        keys,
+        scannedKeys: keys.length,
+        truncated: false,
+    };
+}
 
 export async function GET(req: NextRequest) {
     try {
@@ -88,12 +129,15 @@ export async function GET(req: NextRequest) {
                 windowSeconds: 60,
                 fetchedAt: new Date().toISOString(),
                 isDemo: true,
+                truncated: false,
+                scannedKeys: 0,
+                maxScanKeys: MAX_SCAN_KEYS,
             });
         }
 
         // Query Redis for rate limit keys
         // Pattern: upstash_ratelimit_* (Upstash stores rate limit data with this prefix)
-        const keys = await redis.keys("upstash_ratelimit_*");
+        const { keys, scannedKeys, truncated } = await scanRateLimitKeys(redis);
 
         interface BlockedIP {
             ip: string;
@@ -169,6 +213,9 @@ export async function GET(req: NextRequest) {
             windowSeconds: 60,
             fetchedAt: new Date().toISOString(),
             isDemo: false,
+            truncated,
+            scannedKeys,
+            maxScanKeys: MAX_SCAN_KEYS,
         });
     } catch (err) {
         console.error("Failed to fetch rate limit metrics:", err);

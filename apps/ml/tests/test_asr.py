@@ -11,6 +11,7 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from main import app
 from routers import asr as asr_router
+from utils import audio_upload
 import services.medicine_ner as medicine_ner
 
 client = TestClient(app)
@@ -148,6 +149,24 @@ def test_missing_file_returns_422():
     """FastAPI must return 422 when required 'file' field is absent."""
     response = client.post("/asr/transcribe")
     assert response.status_code == 422
+
+
+def test_rejects_oversized_audio_before_transcription(monkeypatch):
+    monkeypatch.setattr(audio_upload, "MAX_AUDIO_SIZE_BYTES", 10)
+
+    class FailingModel:
+        def transcribe(self, audio, **kwargs):
+            raise AssertionError("Oversized upload should be rejected before transcription")
+
+    monkeypatch.setattr(asr_router, "get_model", lambda: FailingModel())
+
+    response = client.post(
+        "/asr/transcribe",
+        files={"file": ("large.webm", io.BytesIO(b"x" * 11), "audio/webm")},
+    )
+
+    assert response.status_code == 413
+    assert "Audio file too large" in response.json()["detail"]
 
 
 def test_language_hint_is_passed_to_whisper(monkeypatch):

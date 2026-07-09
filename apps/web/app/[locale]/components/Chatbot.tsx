@@ -16,10 +16,18 @@ type Message = {
     isTyping?: boolean;
 };
 
+const safeT = (nsT: (k: string) => string, key: string, fallback: string) => {
+    try {
+        return nsT(key);
+    } catch {
+        return fallback;
+    }
+};
+
 const MessageContent = ({ msg }: { msg: Message }) => {
     const t = useTranslations("chatbot");
 
-    const content = msg.isTranslationKey ? t(msg.text) : msg.text;
+    const content = msg.isTranslationKey ? safeT(t, msg.text, msg.text) : msg.text;
 
     return msg.isBot ? (
         <ChatMarkdown content={content} />
@@ -43,6 +51,12 @@ export default function Chatbot() {
     const t = useTranslations("chatbot");
     const tHome = useTranslations("Home");
     const tA11y = useTranslations("A11y");
+
+    const clearLabel = safeT(t, "clear", "Clear");
+    const placeholderLabel = safeT(t, "placeholder", "Ask me about a medicine...");
+    const titleLabel = safeT(t, "title", "SahiDawa AI");
+    const statusLabel = safeT(t, "status", "Online");
+
     const [isOpen, setIsOpen] = useState(false);
     const [isLoadingWelcome, setIsLoadingWelcome] = useState(true);
     const [messages, setMessages] = useState<Message[]>([
@@ -196,8 +210,8 @@ export default function Chatbot() {
                             <Bot size={20} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold">{t("title")}</h3>
-                            <p className="text-xs text-white/95">{t("status")}</p>
+                            <h3 className="text-sm font-bold">{titleLabel}</h3>
+                            <p className="text-xs text-white/95">{statusLabel}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-1">
@@ -224,8 +238,8 @@ export default function Chatbot() {
                             <button
                                 onClick={() => setIsConfirmingClear(true)}
                                 className="rounded-full p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
-                                aria-label={t("clear")}
-                                title={t("clear")}
+                                aria-label={clearLabel}
+                                title={clearLabel}
                             >
                                 <Trash2 size={18} />
                             </button>
@@ -275,7 +289,7 @@ export default function Chatbot() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                        placeholder={t("placeholder")}
+                        placeholder={placeholderLabel}
                         className="flex-1 rounded-full bg-(--color-surface-muted) px-4 py-3 text-sm text-(--color-text-primary) transition-all placeholder:text-(--color-text-muted) focus:ring-2 focus:ring-green-500/50 focus:outline-none"
                     />
                     <button

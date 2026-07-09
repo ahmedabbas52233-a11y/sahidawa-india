@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 import whisper
 import tempfile
 import os
+from utils.audio_upload import read_audio_upload_limited
 
 router = APIRouter(prefix="/voice", tags=["Voice Verification"])
 
@@ -44,9 +45,11 @@ async def verify_medicine_voice(audio: UploadFile = File(...)):
     if not audio.content_type or audio.content_type not in ["audio/webm", "audio/wav", "audio/ogg", "audio/mp4", "audio/mpeg"]:
         raise HTTPException(status_code=400, detail="Unsupported audio format. Use webm, wav, ogg, or mp4.")
 
+    contents = await read_audio_upload_limited(audio)
+
     # Save to temp file for Whisper
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
-        tmp.write(await audio.read())
+        tmp.write(contents)
         tmp_path = tmp.name
 
     try:
