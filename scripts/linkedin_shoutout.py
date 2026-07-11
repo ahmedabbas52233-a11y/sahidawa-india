@@ -17,6 +17,7 @@ import re
 import json
 import requests
 import traceback
+import subprocess
 from datetime import datetime, timedelta, timezone
 
 
@@ -46,16 +47,20 @@ def get_env_or_exit(key: str) -> str:
 
 def get_pr_metadata() -> dict:
     return {
-        "title": get_env_or_exit("PR_TITLE"),
-        "author": get_env_or_exit("PR_AUTHOR"),
-        "author_avatar": os.environ.get("PR_AUTHOR_AVATAR", ""),
-        "url": get_env_or_exit("PR_URL"),
-        "number": os.environ.get("PR_NUMBER", "N/A"),
-        "labels": os.environ.get("PR_LABELS", ""),
-        "body": os.environ.get("PR_BODY", "").strip()[:500],
-        "repo": os.environ.get("PR_REPO", "RatLoopz/sahidawa-india"),
-        "lines_changed": os.environ.get("PR_LINES_CHANGED", "0"),
-        "diff": os.environ.get("PR_GIT_DIFF", ""),
+        "title":          get_env_or_exit("PR_TITLE"),
+        "author":         get_env_or_exit("PR_AUTHOR"),
+        "author_avatar":  os.environ.get("PR_AUTHOR_AVATAR", ""),
+        "url":            get_env_or_exit("PR_URL"),
+        "number":         os.environ.get("PR_NUMBER", "N/A"),
+        "labels":         os.environ.get("PR_LABELS", ""),
+        "body":           os.environ.get("PR_BODY", "").strip()[:500],
+        "repo":           os.environ.get("PR_REPO", "RatLoopz/sahidawa-india"),
+        "lines_changed":  os.environ.get("PR_LINES_CHANGED", "0"),
+        "diff":           os.environ.get("PR_GIT_DIFF", ""),
+        "additions":      os.environ.get("PR_ADDITIONS", "?"),
+        "deletions":      os.environ.get("PR_DELETIONS", "?"),
+        "files_count":    os.environ.get("PR_FILES_COUNT", "?"),
+        "commits_count":  os.environ.get("PR_COMMITS_COUNT", "?"),
     }
 
 
@@ -403,38 +408,149 @@ def assemble_final_post(ai_content: str, pr: dict) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LINKEDIN POSTING
+# IMAGE GENERATION + LINKEDIN NATIVE IMAGE UPLOAD
 # ─────────────────────────────────────────────────────────────────────────────
-def post_to_linkedin(post_text: str, pr: dict) -> None:
-    access_token = get_env_or_exit("LINKEDIN_ACCESS_TOKEN")
-    org_id = get_env_or_exit("LINKEDIN_ORG_ID")
-    
-    # Use the actual PR URL so LinkedIn scrapes the OpenGraph preview natively
-    article_url = pr['url']
-    author_urn = f"urn:li:organization:{org_id}"
-    
-    payload = {
-        "author": author_urn,
-        "lifecycleState": "PUBLISHED",
-        "specificContent": {
-            "com.linkedin.ugc.ShareContent": {
-                "shareCommentary": {"text": post_text},
-                "shareMediaCategory": "ARTICLE",
-                "media": [{"status": "READY", "originalUrl": article_url}]
-            }
-        },
-        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+def generate_and_upload_image(pr: dict, access_token: str, org_urn: str) -> str | None:
+    """
+    1. Run generate_pr_comic.py to build the comic PNG.
+    2. Upload it natively to LinkedIn via Assets API.
+    Returns the image asset URN on success, or None on any failure.
+    """
+    comic_path = "/tmp/pr_comic.png"
+    env = {
+        **os.environ,
+        "PR_NUMBER":       pr.get("number", ""),
+        "PR_TITLE":        pr.get("title", ""),
+        "PR_AUTHOR":       pr.get("author", ""),
+        "PR_AUTHOR_AVATAR":pr.get("author_avatar", ""),
+        "PR_URL":          pr.get("url", ""),
+        "PR_REPO":         pr.get("repo", ""),
+        "PR_LINES_CHANGED":pr.get("lines_changed", "0"),
+        "PR_ADDITIONS":    pr.get("additions", "?"),
+        "PR_DELETIONS":    pr.get("deletions", "?"),
+        "PR_FILES_COUNT":  pr.get("files_count", "?"),
+        "PR_COMMITS_COUNT":pr.get("commits_count", "?"),
     }
-    
+
+    # Step 1 — Generate comic
+    print("🎨 Generating engineering comic...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/generate_pr_comic.py"],
+            env=env, capture_output=True, text=True, timeout=60
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr)
+        print(result.stdout.strip())
+    except Exception as e:
+        print(f"⚠️  Comic generation failed: {e}")
+        return None
+
+    if not os.path.exists(comic_path):
+        print("⚠️  Comic file not found after generation.")
+        return None
+
+    # Step 2 — Register upload with LinkedIn
+    print("📤 Registering image upload with LinkedIn...")
+    register_url = "https://api.linkedin.com/v2/assets?action=registerUpload"
+    register_payload = {
+        "registerUploadRequest": {
+            "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
+            "owner": org_urn,
+            "serviceRelationships": [{
+                "relationshipType": "OWNER",
+                "identifier": "urn:li:userGeneratedContent"
+            }]
+        }
+    }
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0"
     }
-    
+    try:
+        reg_resp = requests.post(register_url, headers=headers, json=register_payload, timeout=30)
+        reg_resp.raise_for_status()
+        reg_data = reg_resp.json()
+        upload_url = reg_data["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
+        asset_urn  = reg_data["value"]["asset"]
+        print(f"✅ Upload URL acquired. Asset URN: {asset_urn}")
+    except Exception as e:
+        print(f"⚠️  LinkedIn asset registration failed: {e}")
+        return None
+
+    # Step 3 — Upload the PNG binary
+    print("📤 Uploading comic PNG to LinkedIn...")
+    try:
+        with open(comic_path, "rb") as f:
+            upload_resp = requests.put(
+                upload_url,
+                data=f,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "image/png"
+                },
+                timeout=60
+            )
+        if upload_resp.status_code not in (200, 201):
+            raise RuntimeError(f"Upload returned {upload_resp.status_code}: {upload_resp.text[:200]}")
+        print("✅ Comic image uploaded successfully.")
+        return asset_urn
+    except Exception as e:
+        print(f"⚠️  Image binary upload failed: {e}")
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LINKEDIN POSTING
+# ─────────────────────────────────────────────────────────────────────────────
+def post_to_linkedin(post_text: str, pr: dict) -> None:
+    access_token = get_env_or_exit("LINKEDIN_ACCESS_TOKEN")
+    org_id       = get_env_or_exit("LINKEDIN_ORG_ID")
+    org_urn      = f"urn:li:organization:{org_id}"
+
+    # Try to generate + upload the comic image
+    image_urn = generate_and_upload_image(pr, access_token, org_urn)
+
+    if image_urn:
+        # Post with native uploaded image (looks like the whiteboard comic)
+        share_content = {
+            "shareCommentary":   {"text": post_text},
+            "shareMediaCategory": "IMAGE",
+            "media": [{
+                "status": "READY",
+                "description": {"text": pr.get("title", "")},
+                "media": image_urn,
+                "title": {"text": f"PR #{pr.get('number','?')} — {pr.get('title','')}"}
+            }]
+        }
+        print("📸 Posting with native comic image...")
+    else:
+        # Fallback: use real PR URL so LinkedIn scrapes the GitHub OpenGraph card
+        print("↩️  Falling back to GitHub OpenGraph link preview...")
+        share_content = {
+            "shareCommentary":   {"text": post_text},
+            "shareMediaCategory": "ARTICLE",
+            "media": [{"status": "READY", "originalUrl": pr["url"]}]
+        }
+
+    payload = {
+        "author":         org_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {"com.linkedin.ugc.ShareContent": share_content},
+        "visibility":     {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+    }
+    headers = {
+        "Authorization":              f"Bearer {access_token}",
+        "Content-Type":               "application/json",
+        "X-Restli-Protocol-Version":  "2.0.0"
+    }
+
     print("📤 Sending UGC Post to LinkedIn...")
-    resp = requests.post("https://api.linkedin.com/v2/ugcPosts", headers=headers, json=payload, timeout=30)
+    resp = requests.post("https://api.linkedin.com/v2/ugcPosts",
+                         headers=headers, json=payload, timeout=30)
     resp.raise_for_status()
+    print("✅ LinkedIn post sent.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
