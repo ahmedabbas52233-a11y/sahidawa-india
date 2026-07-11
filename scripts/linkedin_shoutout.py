@@ -518,8 +518,8 @@ def generate_and_upload_image(pr: dict, access_token: str, org_urn: str) -> str 
             import io
             img = Image.open(io.BytesIO(og_resp.content))
             width, height = img.size
-            # Crop the bottom 30% of the image (keeps the title and stats, removes comments)
-            cropped = img.crop((0, 0, width, int(height * 0.70)))
+            # Crop just the bottom 20 pixels to remove the language color bar
+            cropped = img.crop((0, 0, width, height - 20))
             
             cropped.save(comic_path, format="PNG")
             print("✅ GitHub OG fallback image cropped and saved successfully.")
