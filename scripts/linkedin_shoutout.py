@@ -449,138 +449,8 @@ Two simple stickmen developers interacting. One is struggling with heavy technic
 Include speech bubbles with developer humor.
 DO NOT INCLUDE ANY REAL TEXT OR STATS AT THE BOTTOM. Leave the center/bottom of the image relatively empty and uncluttered, because a real GitHub PR card will be pasted directly in the middle later."""
 
-def generate_and_upload_image(pr: dict, access_token: str, org_urn: str) -> str | None:
-    """
-    1. Call Pollinations API to generate the comic PNG.
-    2. Upload it natively to LinkedIn via Assets API.
-    Returns the image asset URN on success, or None on any failure.
-    """
-    comic_path = "/tmp/pr_comic.png"
-    api_key = get_env_or_exit("GEMINI_API_KEY")
-    
-    prompt = generate_comic_prompt_with_gemini(pr, api_key)
-
-    # Step 1 — Fetch GitHub OpenGraph Image (with retries for 429s)
-    print("📥 Fetching real GitHub PR Image...")
-    repo = os.environ.get('GITHUB_REPOSITORY', 'RatLoopz/sahidawa-india')
-    pr_number = pr.get('number')
-    og_url = f"https://opengraph.githubassets.com/1/{repo}/pull/{pr_number}"
-    
-    og_content = None
-    import time
-    for attempt in range(3):
-        try:
-            og_resp = requests.get(og_url, timeout=30)
-            if og_resp.status_code == 429:
-                print(f"⚠️ GitHub 429 Rate Limit. Waiting 2s...")
-                time.sleep(2)
-                continue
-            og_resp.raise_for_status()
-            og_content = og_resp.content
-            break
-        except Exception as e:
-            print(f"⚠️ GitHub fetch attempt {attempt} failed: {e}")
-            time.sleep(2)
-
-    # Step 2 — Generate AI Background via Pollinations
-    print("🎨 Requesting engineering background from Pollinations API...")
-    bg_img = None
-    try:
-        import urllib.parse
-        import random
-        from PIL import Image, ImageDraw, ImageFilter
-        import io
-        
-        # Pollinations URL routing fails (404) if the prompt contains newline characters (%0A)
-        clean_prompt = prompt.replace('\n', ' ').strip()
-        encoded_prompt = urllib.parse.quote(clean_prompt)
-        seed = random.randint(1, 999999)
-        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true&seed={seed}"
-        
-        img_resp = requests.get(image_url, timeout=60)
-        img_resp.raise_for_status()
-        bg_img = Image.open(io.BytesIO(img_resp.content)).convert("RGBA")
-        print("✅ Pollinations API generated background successfully.")
-    except Exception as e:
-        print(f"⚠️ Pollinations API failed: {e}")
-
-    # Step 3 — Composite or Fallback
-    try:
-        from PIL import Image
-        import io
-        if not og_content:
-            raise ValueError("No GitHub OG image available")
-            
-        pr_img = Image.open(io.BytesIO(og_content)).convert("RGBA")
-        width, height = pr_img.size
-
-        if bg_img:
-            # Composite
-            # The entire GitHub OG image is perfectly designed, we just need to scale it down
-            # so it fits nicely inside the AI background like a floating card.
-            # First, crop just the bottom 25px language bar
-            pr_cropped = pr_img.crop((0, 0, width, height - 25))
-            
-            # Scale it down to 85%
-            scale = 0.85
-            new_w = int(pr_cropped.width * scale)
-            new_h = int(pr_cropped.height * scale)
-            
-            # Using Image.Resampling.LANCZOS for high quality downscaling if available, else Image.LANCZOS
-            try:
-                resample_filter = Image.Resampling.LANCZOS
-            except AttributeError:
-                resample_filter = Image.LANCZOS
-                
-            pr_scaled = pr_cropped.resize((new_w, new_h), resample_filter)
-            
-            # --- Make the scaled card look professional (Rounded corners + Drop Shadow) ---
-            radius = 24
-            
-            # Create rounded mask
-            mask = Image.new('L', (new_w, new_h), 0)
-            draw = ImageDraw.Draw(mask)
-            draw.rounded_rectangle([(0, 0), (new_w, new_h)], radius=radius, fill=255)
-            
-            # Apply rounded mask
-            rounded_card = Image.new('RGBA', (new_w, new_h))
-            rounded_card.paste(pr_scaled, (0, 0), mask=mask)
-            
-            # Create a soft, elegant drop shadow
-            shadow_blur = 25
-            shadow_offset_y = 15
-            shadow_canvas = Image.new('RGBA', (new_w + shadow_blur*2, new_h + shadow_blur*2 + shadow_offset_y), (0,0,0,0))
-            shadow_draw = ImageDraw.Draw(shadow_canvas)
-            shadow_draw.rounded_rectangle(
-                [(shadow_blur, shadow_blur), (new_w + shadow_blur, new_h + shadow_blur)],
-                radius=radius, fill=(0, 0, 0, 100)
-            )
-            shadow_canvas = shadow_canvas.filter(ImageFilter.GaussianBlur(shadow_blur))
-            
-            # Paste the rounded card onto the shadow canvas
-            shadow_canvas.paste(rounded_card, (shadow_blur, shadow_blur), rounded_card)
-            
-            # Paste the final shadowed card exactly into the center of the AI background
-            bg_w, bg_h = bg_img.size
-            final_card_w, final_card_h = shadow_canvas.size
-            offset = ((bg_w - final_card_w) // 2, (bg_h - final_card_h) // 2)
-            
-            bg_img.paste(shadow_canvas, offset, shadow_canvas)
-            bg_img.convert('RGB').save(comic_path, format="PNG")
-            print("✅ Successfully composited AI background and Real PR Card.")
-        else:
-            # Fallback
-            print("↩️ Falling back to ONLY GitHub PR OpenGraph image...")
-            cropped = pr_img.crop((0, 0, width, height - 25))
-            cropped.save(comic_path, format="PNG")
-            print("✅ GitHub OG fallback image cropped and saved successfully.")
-            
-    except Exception as e:
-        print(f"⚠️ Image processing completely failed: {e}")
-        return None
-
-    # Step 2 — Register upload with LinkedIn
-    print("📤 Registering image upload with LinkedIn...")
+def _upload_asset_to_linkedin(file_path: str, access_token: str, org_urn: str) -> str | None:
+    print(f"📤 Registering image upload for {file_path}...")
     register_url = "https://api.linkedin.com/v2/assets?action=registerUpload"
     register_payload = {
         "registerUploadRequest": {
@@ -603,15 +473,13 @@ def generate_and_upload_image(pr: dict, access_token: str, org_urn: str) -> str 
         reg_data = reg_resp.json()
         upload_url = reg_data["value"]["uploadMechanism"]["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]["uploadUrl"]
         asset_urn  = reg_data["value"]["asset"]
-        print(f"✅ Upload URL acquired. Asset URN: {asset_urn}")
     except Exception as e:
-        print(f"⚠️  LinkedIn asset registration failed: {e}")
+        print(f"⚠️ LinkedIn asset registration failed for {file_path}: {e}")
         return None
 
-    # Step 3 — Upload the PNG binary
-    print("📤 Uploading comic PNG to LinkedIn...")
+    print(f"📤 Uploading binary {file_path} to LinkedIn...")
     try:
-        with open(comic_path, "rb") as f:
+        with open(file_path, "rb") as f:
             upload_resp = requests.put(
                 upload_url,
                 data=f,
@@ -623,11 +491,87 @@ def generate_and_upload_image(pr: dict, access_token: str, org_urn: str) -> str 
             )
         if upload_resp.status_code not in (200, 201):
             raise RuntimeError(f"Upload returned {upload_resp.status_code}: {upload_resp.text[:200]}")
-        print("✅ Comic image uploaded successfully.")
+        print(f"✅ Image {file_path} uploaded successfully.")
         return asset_urn
     except Exception as e:
-        print(f"⚠️  Image binary upload failed: {e}")
+        print(f"⚠️ Image binary upload failed for {file_path}: {e}")
         return None
+
+def generate_and_upload_images(pr: dict, access_token: str, org_urn: str) -> list[str]:
+    """
+    1. Fetches the clean GitHub PR OpenGraph image, crops it, and uploads it.
+    2. Generates a completely separate AI stickman comic from Pollinations, and uploads it.
+    Returns a list of URNs to be posted as a carousel.
+    """
+    import urllib.parse
+    import random
+    from PIL import Image
+    import io
+    
+    comic_path = "/tmp/pr_comic.png"
+    pr_card_path = "/tmp/pr_card_clean.png"
+    api_key = get_env_or_exit("GEMINI_API_KEY")
+    urns = []
+
+    # Step 1 — Fetch and upload GitHub PR Image
+    print("📥 Fetching real GitHub PR Image...")
+    repo = os.environ.get('GITHUB_REPOSITORY', 'RatLoopz/sahidawa-india')
+    pr_number = pr.get('number')
+    og_url = f"https://opengraph.githubassets.com/1/{repo}/pull/{pr_number}"
+    
+    og_content = None
+    import time
+    for attempt in range(3):
+        try:
+            og_resp = requests.get(og_url, timeout=30)
+            if og_resp.status_code == 429:
+                print(f"⚠️ GitHub 429 Rate Limit. Waiting 2s...")
+                time.sleep(2)
+                continue
+            og_resp.raise_for_status()
+            og_content = og_resp.content
+            break
+        except Exception as e:
+            print(f"⚠️ GitHub fetch attempt {attempt} failed: {e}")
+            time.sleep(2)
+            
+    if og_content:
+        try:
+            pr_img = Image.open(io.BytesIO(og_content)).convert("RGB")
+            width, height = pr_img.size
+            # Crop the bottom 25px language bar to make it perfectly clean
+            cropped = pr_img.crop((0, 0, width, height - 25))
+            cropped.save(pr_card_path, format="PNG")
+            
+            pr_urn = _upload_asset_to_linkedin(pr_card_path, access_token, org_urn)
+            if pr_urn:
+                urns.append(pr_urn)
+        except Exception as e:
+            print(f"⚠️ Failed to process/upload PR card image: {e}")
+
+    # Step 2 — Generate AI Background via Pollinations and upload it
+    print("🎨 Requesting engineering stickman comic from Pollinations API...")
+    prompt = generate_comic_prompt_with_gemini(pr, api_key)
+    try:
+        clean_prompt = prompt.replace('\n', ' ').strip()
+        encoded_prompt = urllib.parse.quote(clean_prompt)
+        seed = random.randint(1, 999999)
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true&seed={seed}"
+        
+        img_resp = requests.get(image_url, timeout=60)
+        img_resp.raise_for_status()
+        
+        with open(comic_path, "wb") as f:
+            f.write(img_resp.content)
+        print("✅ Pollinations API generated comic successfully.")
+        
+        comic_urn = _upload_asset_to_linkedin(comic_path, access_token, org_urn)
+        if comic_urn:
+            urns.append(comic_urn)
+    except Exception as e:
+        print(f"⚠️ Pollinations API comic generation/upload failed: {e}")
+
+    return urns
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -638,22 +582,24 @@ def post_to_linkedin(post_text: str, pr: dict) -> None:
     org_id       = get_env_or_exit("LINKEDIN_ORG_ID")
     org_urn      = f"urn:li:organization:{org_id}"
 
-    # Try to generate + upload the comic image
-    image_urn = generate_and_upload_image(pr, access_token, org_urn)
+    # Try to generate + upload the images
+    image_urns = generate_and_upload_images(pr, access_token, org_urn)
 
-    if image_urn:
-        # Post with native uploaded image (looks like the whiteboard comic)
+    if image_urns:
+        # Post with native uploaded images (multi-image carousel)
         share_content = {
             "shareCommentary":   {"text": post_text},
             "shareMediaCategory": "IMAGE",
-            "media": [{
+            "media": []
+        }
+        for urn in image_urns:
+            share_content["media"].append({
                 "status": "READY",
                 "description": {"text": pr.get("title", "")},
-                "media": image_urn,
+                "media": urn,
                 "title": {"text": f"PR #{pr.get('number','?')} — {pr.get('title','')}"}
-            }]
-        }
-        print("📸 Posting with native comic image...")
+            })
+        print(f"📸 Posting with {len(image_urns)} native image(s)...")
     else:
         # Fallback: use real PR URL so LinkedIn scrapes the GitHub OpenGraph card
         print("↩️  Falling back to GitHub OpenGraph link preview...")
