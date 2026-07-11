@@ -391,7 +391,7 @@ sahidawa-india/
 │   ├── ISSUE_TEMPLATE/         # Bug report, feature request templates
 │   └── PULL_REQUEST_TEMPLATE.md
 ├── docker-compose.yml
-├── docker-compose.dev.yml
+├── docker-compose.prod.yml
 └── README.md
 ```
 
