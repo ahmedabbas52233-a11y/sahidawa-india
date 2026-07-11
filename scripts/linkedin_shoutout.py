@@ -464,7 +464,7 @@ Draw an arrow pointing to the contributor's avatar that says "this guy cooked �
 
 def generate_and_upload_image(pr: dict, access_token: str, org_urn: str) -> str | None:
     """
-    1. Call Gemini API (Imagen 3) to generate the comic PNG.
+    1. Call Pollinations API to generate the comic PNG.
     2. Upload it natively to LinkedIn via Assets API.
     Returns the image asset URN on success, or None on any failure.
     """
@@ -473,38 +473,29 @@ def generate_and_upload_image(pr: dict, access_token: str, org_urn: str) -> str 
     
     prompt = generate_comic_prompt_with_gemini(pr, api_key)
 
-    # Step 1 — Generate comic via Gemini SDK
-    print("🎨 Requesting engineering comic from Gemini API...")
+    # Step 1 — Generate comic via Pollinations.ai API (Free alternative to Gemini Imagen)
+    print("🎨 Requesting engineering comic from Pollinations API...")
     try:
-        from google import genai
-        from google.genai.types import GenerateContentConfig, Modality
+        import urllib.parse
+        import random
+        import requests
         
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-3.1-flash-image',
-            contents=prompt,
-            config=GenerateContentConfig(
-                response_modalities=[Modality.IMAGE],
-            )
-        )
+        encoded_prompt = urllib.parse.quote(prompt)
+        # Using Pollinations API (Flux model) - Free, no auth required
+        # Size 1200x630 is perfect for LinkedIn
+        seed = random.randint(1, 999999)
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true&seed={seed}"
         
-        image_bytes = None
-        for part in response.candidates[0].content.parts:
-            if part.inline_data:
-                image_bytes = part.inline_data.data
-                break
-                
-        if image_bytes:
-            # Write binary image to /tmp
-            with open(comic_path, "wb") as f:
-                f.write(image_bytes)
-            print("✅ Gemini API generated comic successfully.")
-        else:
-            print("⚠️ No image returned from Gemini API.")
-            return None
+        img_resp = requests.get(image_url, timeout=60)
+        img_resp.raise_for_status()
+        
+        with open(comic_path, "wb") as f:
+            f.write(img_resp.content)
+            
+        print("✅ Pollinations API generated comic successfully.")
             
     except Exception as e:
-        print(f"⚠️ Gemini API Image generation failed: {e}")
+        print(f"⚠️ AI Image generation failed: {e}")
         print("↩️ Falling back to GitHub PR OpenGraph image...")
         try:
             repo = os.environ.get('GITHUB_REPOSITORY', 'RatLoopz/sahidawa-india')
