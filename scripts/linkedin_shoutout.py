@@ -371,7 +371,7 @@ def generate_post_with_gemini(pr: dict, tier_display: str, tier_desc: str) -> st
         f"Codebase URL: {PROJECT_GITHUB_URL}\n\n"
         f"Git Diff Context:\n{pr.get('diff', '')[:3000]}"
     )
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_api_key}"
     payload = {
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"parts": [{"text": user_prompt}]}],
@@ -425,7 +425,7 @@ def generate_comic_prompt_with_gemini(pr: dict, api_key: str) -> str:
     )
     user_prompt = f"PR Title: {pr.get('title', '')}\nPR Body: {pr.get('body', '')[:500]}\nGenerate the detailed image prompt."
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     payload = {
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"parts": [{"text": user_prompt}]}],
@@ -491,7 +491,9 @@ def generate_and_upload_image(pr: dict, access_token: str, org_urn: str) -> str 
         from PIL import Image, ImageDraw, ImageFilter
         import io
         
-        encoded_prompt = urllib.parse.quote(prompt)
+        # Pollinations URL routing fails (404) if the prompt contains newline characters (%0A)
+        clean_prompt = prompt.replace('\n', ' ').strip()
+        encoded_prompt = urllib.parse.quote(clean_prompt)
         seed = random.randint(1, 999999)
         image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1200&height=630&nologo=true&seed={seed}"
         
