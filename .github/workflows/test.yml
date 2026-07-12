@@ -51,32 +51,6 @@ jobs:
                       ${{ runner.os }}-turbo-main-
                       ${{ runner.os }}-turbo-
 
-            - name: ⚡ Cache Next.js Build
-              uses: actions/cache@v4
-              id: nextjs-cache
-              with:
-                  path: apps/web/.next/cache
-                  key: ${{ runner.os }}-nextjs-${{ github.ref_name }}-${{ hashFiles('**/package-lock.json') }}
-                  restore-keys: |
-                      ${{ runner.os }}-nextjs-${{ github.ref_name }}-
-                      ${{ runner.os }}-nextjs-main-
-                      ${{ runner.os }}-nextjs-
-
-            - name: 📊 Report Cache Status
-              run: |
-                  echo "### ⚡ Cache Status" >> $GITHUB_STEP_SUMMARY
-                  echo "| Cache | Status |" >> $GITHUB_STEP_SUMMARY
-                  echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-                  echo "| Turborepo | ${{ steps.turbo-cache.outputs.cache-hit == 'true' && '✅ Hit' || '❌ Miss' }} |" >> $GITHUB_STEP_SUMMARY
-                  echo "| Next.js   | ${{ steps.nextjs-cache.outputs.cache-hit == 'true' && '✅ Hit' || '❌ Miss' }} |" >> $GITHUB_STEP_SUMMARY
-
-            - name: 🏗️ Build Workspace Apps
-              run: npm run build
-              env:
-                  TURBO_CACHE_DIR: .turbo
-                  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
-                  NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key
-
             - name: 🧪 Run Tests
               run: npm run test -- --forceExit
 
