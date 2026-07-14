@@ -1576,5 +1576,16 @@
             }
         },
         "footer": "SahiDawa is free, open-source, and built for 1.4 billion Indians. No ads. No premium. No data sold. Ever."
+    },
+    "PrivacyConsent": {
+        "title": "Privacy & Data Consent",
+        "description": "To provide you with a secure experience, SahiDawa needs your permission to collect data.",
+        "locationPurpose": "We use your location to find verified pharmacies near you on the map.",
+        "scanHistoryPurpose": "We store your scan history locally or securely sync it to help you track your verification records.",
+        "acceptAll": "Accept All",
+        "denyAll": "Deny",
+        "savePreferences": "Save Preferences",
+        "locationLabel": "Location Services",
+        "scanHistoryLabel": "Scan History Storage"
     }
 }
