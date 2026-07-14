@@ -108,23 +108,11 @@ import { computeTwilioSignature } from "../src/middleware/twilioSignature";
 
 describe("notifications routes", () => {
     let app: express.Express;
-    let server: any;
-
-    beforeAll((done) => {
+    beforeAll(() => {
         app = express();
         app.use(express.json());
         app.use(express.urlencoded({ extended: true }));
         app.use("/api/notifications", notificationsRouter);
-        server = app.listen(0, done);
-    });
-
-    afterAll((done) => {
-        if (server) {
-            if (server.closeAllConnections) server.closeAllConnections();
-            server.close(done);
-        } else {
-            done();
-        }
     });
 
     beforeEach(() => {

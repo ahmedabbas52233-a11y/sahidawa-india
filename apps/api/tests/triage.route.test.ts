@@ -43,22 +43,10 @@ delete malformedMedicine.generic_name;
 
 describe("triage routes response validation", () => {
     let app: express.Express;
-    let server: any;
-
-    beforeAll((done) => {
+    beforeAll(() => {
         app = express();
         app.use(express.json());
         app.use("/api/triage", triageRouter);
-        server = app.listen(0, done);
-    });
-
-    afterAll((done) => {
-        if (server) {
-            if (server.closeAllConnections) server.closeAllConnections();
-            server.close(done);
-        } else {
-            done();
-        }
     });
 
     beforeEach(() => {
