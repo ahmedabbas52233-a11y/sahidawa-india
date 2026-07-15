@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { fetchTodaySummary, logDose, type TodaySchedule } from "@/lib/scheduleApi";
 import { useSession } from "@/src/components/AuthProvider";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 
 function formatTime(time: string): string {
     const [h, m] = time.split(":");
@@ -72,24 +73,34 @@ function DoseButton({
     logDate: string;
     time: string;
     currentStatus: string | undefined;
-    onStatusChange: (time: string, status: "taken" | "skipped") => void;
+    onStatusChange: (time: string, status: "taken" | "skipped" | undefined) => void;
     t: (key: string) => string;
 }) {
     const [loading, setLoading] = useState(false);
     const [actionError, setActionError] = useState<string | null>(null);
 
     const handleAction = async (status: "taken" | "skipped") => {
+        const previousStatus = currentStatus as "taken" | "skipped" | undefined;
         setLoading(true);
         setActionError(null);
+
+        // Optimistically update the UI
+        onStatusChange(time, status);
+
         try {
             await logDose(scheduleId, {
                 log_date: logDate,
                 log_time: time,
                 status,
             });
-            onStatusChange(time, status);
+            toast.success(status === "taken" ? t("doseLoggedSuccess") : t("doseSkippedSuccess"), {
+                id: `dose-${scheduleId}-${time}`,
+            });
         } catch {
+            // Revert optimistic update
+            onStatusChange(time, previousStatus);
             setActionError(t("doseErrorMessage"));
+            toast.error(t("doseErrorMessage"), { id: `dose-${scheduleId}-${time}` });
         } finally {
             setLoading(false);
         }
@@ -184,8 +195,20 @@ export default function SchedulePage() {
         }
     }, [authLoading, fetchData]);
 
-    const handleDoseChange = (scheduleId: string, time: string, status: "taken" | "skipped") => {
-        setDoseStatus((prev) => ({ ...prev, [`${scheduleId}-${time}`]: status }));
+    const handleDoseChange = (
+        scheduleId: string,
+        time: string,
+        status: "taken" | "skipped" | undefined
+    ) => {
+        setDoseStatus((prev) => {
+            const next = { ...prev };
+            if (status === undefined) {
+                delete next[`${scheduleId}-${time}`];
+            } else {
+                next[`${scheduleId}-${time}`] = status;
+            }
+            return next;
+        });
     };
 
     return (

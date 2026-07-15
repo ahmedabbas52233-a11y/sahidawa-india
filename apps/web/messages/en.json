@@ -1587,5 +1587,18 @@
         "savePreferences": "Save Preferences",
         "locationLabel": "Location Services",
         "scanHistoryLabel": "Scan History Storage"
+    },
+    "schedule": {
+        "pageTitle": "Schedule",
+        "pageSubtitle": "Track your daily medicine compliance",
+        "heading": "Daily Schedule",
+        "statusTaken": "Taken",
+        "statusSkipped": "Skipped",
+        "actionTaken": "Taken",
+        "actionTake": "Mark Taken",
+        "actionSkip": "Skip",
+        "doseErrorMessage": "Failed to update dose status. Please try again.",
+        "doseLoggedSuccess": "Dose status updated successfully.",
+        "doseSkippedSuccess": "Dose marked as skipped."
     }
 }
