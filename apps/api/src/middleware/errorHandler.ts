@@ -1,63 +1,49 @@
-import { Request, Response, NextFunction } from 'express';
-import logger from '../utils/logger';
-import { getDbErrorStatus } from '../utils/dbErrors';
-import { getRequestId } from './requestId';
+import { Request, Response, NextFunction } from "express";
+import logger from "../utils/logger";
+import { getDbErrorStatus } from "../utils/dbErrors";
+import { getRequestId } from "./requestId";
 
-const SENSITIVE_FIELDS = ['password', 'apiKey', 'api_key', 'token', 'secret', 'authorization', 'cookie'];
-
-function sanitize(obj: Record<string, unknown>): Record<string, unknown> {
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (SENSITIVE_FIELDS.some((field) => key.toLowerCase().includes(field))) {
-      sanitized[key] = '[REDACTED]';
-    } else if (typeof value === 'object' && value !== null) {
-      sanitized[key] = sanitize(value as Record<string, unknown>);
-    } else {
-      sanitized[key] = value;
-    }
-  }
-  return sanitized;
-}
+import { sanitize } from "../utils/security/sanitize";
 
 export function errorHandler(
-  err: Error & { statusCode?: number; status?: number; code?: string },
-  req: Request,
-  res: Response,
-  _next: NextFunction
+    err: Error & { statusCode?: number; status?: number; code?: string },
+    req: Request,
+    res: Response,
+    _next: NextFunction
 ): void {
-  let statusCode = err.statusCode || err.status || 500;
+    let statusCode = err.statusCode || err.status || 500;
 
-  if (err.code) {
-    const dbStatus = getDbErrorStatus(err.code);
-    if (dbStatus) {
-      statusCode = dbStatus;
+    if (err.code) {
+        const dbStatus = getDbErrorStatus(err.code);
+        if (dbStatus) {
+            statusCode = dbStatus;
+        }
     }
-  }
 
-  const level = statusCode >= 500 ? 'error' : 'warn';
+    const level = statusCode >= 500 ? "error" : "warn";
 
-  const requestId = getRequestId();
+    const requestId = getRequestId();
 
-  logger.log({
-    level,
-    message: `${req.method} ${req.originalUrl} - ${err.message}`,
-    statusCode,
-    stack: err.stack,
-    body: req.body ? sanitize(req.body as Record<string, unknown>) : undefined,
-    query: req.query,
-    params: req.params,
-    ...(requestId && { requestId }),
-  });
+    logger.log({
+        level,
+        message: `${req.method} ${req.originalUrl} - ${err.message}`,
+        statusCode,
+        stack: err.stack,
+        body: req.body ? sanitize(req.body as Record<string, unknown>) : undefined,
+        query: req.query,
+        params: req.params,
+        ...(requestId && { requestId }),
+    });
 
-  const isProduction = process.env.NODE_ENV === 'production';
-  const clientMessage = statusCode >= 500 ? 'Internal Server Error' : err.message;
+    const isProduction = process.env.NODE_ENV === "production";
+    const clientMessage = statusCode >= 500 ? "Internal Server Error" : err.message;
 
-  res.status(statusCode).json({
-    success: false,
-    error: {
-      message: clientMessage,
-      ...(!isProduction && { stack: err.stack }),
-    },
-    ...(requestId && { requestId }),
-  });
+    res.status(statusCode).json({
+        success: false,
+        error: {
+            message: clientMessage,
+            ...(!isProduction && { stack: err.stack }),
+        },
+        ...(requestId && { requestId }),
+    });
 }

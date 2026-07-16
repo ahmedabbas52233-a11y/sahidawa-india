@@ -1,3 +1,4 @@
+import "./instrument";
 import "./tracing";
 import app from "./app";
 import { createGracefulShutdown } from "./gracefulShutdown";

@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import express, { Express, Request, Response, NextFunction } from "express";
-import dotenv from "dotenv";
 import path from "path";
 import logger from "./utils/logger";
 import swaggerUi from "swagger-ui-express";
@@ -18,11 +17,8 @@ import abhaRoutes from "./routes/abha";
 import trackingRouter from "./routes/tracking";
 // ── Environment Configuration ──────────────────────────────────────────────
 const rootEnvPath = path.resolve(__dirname, "../../../.env");
-dotenv.config({ path: rootEnvPath });
-
-if (!process.env.SUPABASE_URL) {
-    dotenv.config();
-}
+// dotenv.config() now runs in index.ts, before this file is imported —
+// removed here to avoid loading env vars twice.
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
     logger.error("Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables", {
@@ -74,8 +70,10 @@ import wishlistRouter from "./routes/wishlist";
 import webhooksRouter from "./routes/webhooks";
 import apiKeysRouter from "./routes/apiKeys";
 import { supabase } from "./db/client";
+import * as Sentry from "@sentry/node";
 import { createCorsOptions } from "./config/cors";
 import { errorHandler } from "./middleware/errorHandler";
+import { sentryEnabled } from "./instrument";
 // ── Application Initialization ─────────────────────────────────────────────
 const app: Express = express();
 app.set("trust proxy", 1); // Trust first proxy (Nginx) — fixes req.ip for rate limiters
@@ -345,6 +343,12 @@ app.get("/api/docs.json", (_req: Request, res: Response) => {
 });
 
 // ── Error Management Middleware ────────────────────────────────────────────
+// Sentry must capture the exception before our custom errorHandler runs,
+// so it sees the raw error before any response shaping/redaction happens.
+if (sentryEnabled) {
+    Sentry.setupExpressErrorHandler(app);
+}
+
 app.use(errorHandler);
 
 export default app;
