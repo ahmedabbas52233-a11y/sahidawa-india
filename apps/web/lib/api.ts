@@ -1,15 +1,10 @@
 import { fetchWithRetry } from "./apiWithRetry";
 import { createSWRCache } from "./cacheUtils";
 
-import type {
-  VerifiedPharmacy,
-  LasaMatch,
-  LasaMatchType,
-} from "@sahidawa/types";
+import type { VerifiedPharmacy, LasaMatch, LasaMatchType } from "@sahidawa/types";
 export type { VerifiedPharmacy, LasaMatch, LasaMatchType };
 
 import { PHARMACY_SEARCH_RADIUS_DEFAULT_KM } from "@sahidawa/shared";
-
 
 const DEFAULT_API_ORIGIN = "http://localhost:4000";
 const configuredApiUrl = (process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_ORIGIN).trim();
@@ -19,6 +14,18 @@ const fuzzyMatchCache = createSWRCache<FuzzyMatch[]>(60_000); // 60s TTL
 const verifyBrandCache = createSWRCache<VerifyResult>(300_000); // 5min TTL
 
 let csrfTokenCache: string | null = null;
+let isRefreshingCsrf = false;
+let refreshSubscribers: { resolve: (token: string) => void; reject: (err: any) => void }[] = [];
+
+function onCsrfRefreshed(token: string) {
+    refreshSubscribers.forEach(({ resolve }) => resolve(token));
+    refreshSubscribers = [];
+}
+
+function onCsrfRefreshFailed(err: any) {
+    refreshSubscribers.forEach(({ reject }) => reject(err));
+    refreshSubscribers = [];
+}
 
 export async function getCsrfToken(): Promise<string> {
     if (csrfTokenCache) return csrfTokenCache;
@@ -26,19 +33,35 @@ export async function getCsrfToken(): Promise<string> {
 }
 
 export async function refreshCsrfToken(): Promise<string> {
+    if (isRefreshingCsrf) {
+        return new Promise((resolve, reject) => {
+            refreshSubscribers.push({ resolve, reject });
+        });
+    }
+
+    isRefreshingCsrf = true;
     csrfTokenCache = null;
-    const res = await fetch(`${API_BASE}/api/csrf-token`, {
-        credentials: "include",
-    });
-    if (!res.ok) {
-        throw new Error(`Failed to fetch CSRF token: ${res.status} ${res.statusText}`);
+
+    try {
+        const res = await fetch(`${API_BASE}/api/csrf-token`, {
+            credentials: "include",
+        });
+        if (!res.ok) {
+            throw new Error(`Failed to fetch CSRF token: ${res.status} ${res.statusText}`);
+        }
+        const data = await res.json();
+        if (!data.csrfToken) {
+            throw new Error("CSRF token not found in response body");
+        }
+        csrfTokenCache = data.csrfToken;
+        onCsrfRefreshed(data.csrfToken);
+        return data.csrfToken;
+    } catch (error) {
+        onCsrfRefreshFailed(error);
+        throw error;
+    } finally {
+        isRefreshingCsrf = false;
     }
-    const data = await res.json();
-    if (!data.csrfToken) {
-        throw new Error("CSRF token not found in response body");
-    }
-    csrfTokenCache = data.csrfToken;
-    return csrfTokenCache!;
 }
 
 async function fetchWithCsrf<T>(
@@ -62,14 +85,12 @@ async function fetchWithCsrf<T>(
 
     let res = await doFetch(await getCsrfToken());
 
-    if (res.status === 403) {
-        const freshToken = await refreshCsrfToken();
-        res = await doFetch(freshToken);
-    }
-
     if (!res.ok && !(ignore404 && res.status === 404)) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Server error occurred. Please retry.");
+        const body = (await res.json().catch(() => ({}))) as {
+            error?: { message?: string } | string;
+        };
+        const errorMessage = typeof body.error === "object" ? body.error.message : body.error;
+        throw new Error(errorMessage ?? "Server error occurred. Please retry.");
     }
 
     return res.json() as Promise<T>;

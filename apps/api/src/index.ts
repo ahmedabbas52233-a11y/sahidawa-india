@@ -1,3 +1,4 @@
+import "./instrument";
 import "./tracing";
 import app from "./app";
 import { createGracefulShutdown } from "./gracefulShutdown";
@@ -84,6 +85,11 @@ if (process.env.NODE_ENV !== "test") {
         process.exit(0);
     };
 
-    process.on("SIGTERM", shutdown);
-    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", () => {
+        void gracefulShutdown("SIGTERM");
+    });
+
+    process.on("SIGINT", () => {
+        void gracefulShutdown("SIGINT");
+    });
 }

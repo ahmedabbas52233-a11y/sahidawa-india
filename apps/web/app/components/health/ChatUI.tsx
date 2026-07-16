@@ -157,6 +157,7 @@ export default function ChatUI() {
     const [isListening, setIsListening] = useState(false);
     const [showWelcome, setShowWelcome] = useState(true);
     const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
+    const [sessionId, setSessionId] = useState<string | null>(null);
     const lastUserText = useRef("");
     const messagesContainerRef = useRef<HTMLElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -225,9 +226,16 @@ export default function ChatUI() {
                 const res = await fetch("/api/chat", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ messages: history, locale }),
+                    body: JSON.stringify({ messages: history, locale, session_id: sessionId }),
                     signal: requestController.signal,
                 });
+
+                const returnedSessionId = res.headers.get("X-Session-ID");
+
+                if (returnedSessionId) {
+                    setSessionId(returnedSessionId);
+                }
+
                 if (res.status === 429) {
                     throw new Error(t("tooManyRequests"));
                 }
@@ -411,6 +419,18 @@ export default function ChatUI() {
     };
     const handleHomeClick = () => {
         activeRequestRef.current?.abort();
+        if (sessionId) {
+            fetch("/api/triage/clear", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                }),
+            }).catch(() => {});
+        }
+        setSessionId(null);
         lastUserText.current = "";
         setMessages([createInitialMessage(locale)]);
         setInput("");

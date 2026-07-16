@@ -99,6 +99,44 @@ export async function fetchWithRetry(
             }
 
             if (!response.ok) {
+                // Check for CSRF error globally
+                if (response.status === 403) {
+                    const clonedResponse = response.clone();
+                    const bodyText = await clonedResponse.text().catch(() => "");
+                    const isCsrfError =
+                        bodyText.toLowerCase().includes("csrf") ||
+                        bodyText.toLowerCase().includes("token");
+
+                    if (isCsrfError) {
+                        try {
+                            const { refreshCsrfToken } = await import("./api");
+                            const newToken = await refreshCsrfToken();
+
+                            const newOptions = { ...fetchOptions };
+                            if (newOptions.headers) {
+                                const headers = new Headers(newOptions.headers);
+                                headers.set("x-csrf-token", newToken);
+                                newOptions.headers = headers;
+                            } else {
+                                newOptions.headers = { "x-csrf-token": newToken };
+                            }
+
+                            const retryResponse = await fetch(url, {
+                                ...newOptions,
+                                credentials: newOptions.credentials ?? "include",
+                                signal: controller.signal,
+                            });
+
+                            if (retryResponse.ok || !config.shouldRetry(retryResponse, attempt)) {
+                                return retryResponse;
+                            }
+                        } catch (csrfError) {
+                            // If token refresh fails, don't loop, continue with original error response
+                            console.warn("[API CSRF Interceptor] Token refresh failed:", csrfError);
+                        }
+                    }
+                }
+
                 if (attempt <= config.maxRetries && config.shouldRetry(response, attempt)) {
                     const delay = getBackoffDelay(attempt, config);
                     await sleep(delay);
