@@ -208,7 +208,7 @@ export async function POST(req: Request) {
             );
         }
         const ai = getAiClient();
-        const { messages, mode, responseLanguage, locale } = await req.json();
+        const { messages, mode, responseLanguage, locale, session_id } = await req.json();
 
         if (!Array.isArray(messages) || messages.length === 0) {
             return NextResponse.json({ error: "Messages are required" }, { status: 400 });
@@ -251,6 +251,7 @@ export async function POST(req: Request) {
 
             let parsedResponse;
             let emergencyFromML = false;
+            let mlData: any = null;
 
             try {
                 const mlServiceUrl = getMlServiceUrl();
@@ -300,6 +301,7 @@ export async function POST(req: Request) {
                     body: JSON.stringify({
                         messages: formattedMessages,
                         locale: locale || "en",
+                        session_id,
                     }),
                     signal: mlAbortController.signal,
                 });
@@ -310,7 +312,7 @@ export async function POST(req: Request) {
                     throw new Error(`ML service returned status ${mlResponse.status}`);
                 }
 
-                const mlData = await mlResponse.json();
+                mlData = await mlResponse.json();
                 parsedResponse = {
                     text: mlData.response,
                     summary: mlData.summary || mlData.response,
@@ -382,6 +384,7 @@ export async function POST(req: Request) {
             return NextResponse.json({
                 ...parsedResponse,
                 emergency: emergencyFromML || deterministicEmergency.isEmergency,
+                session_id: mlData?.session_id ?? null,
             });
         }
 
@@ -575,6 +578,7 @@ export async function POST(req: Request) {
             headers: {
                 "Content-Type": "text/plain; charset=utf-8",
                 "Cache-Control": "no-cache, no-transform",
+                "X-Session-ID": session_id ?? "",
             },
         });
     } catch (error: unknown) {
