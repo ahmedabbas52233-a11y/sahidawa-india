@@ -92,13 +92,31 @@ router.get(
                 }),
             ]);
 
-            if (pharmaciesRes.error) throw pharmaciesRes.error;
-            if (ashaWorkersRes.error) throw ashaWorkersRes.error;
-            const pharmacies = Array.isArray(pharmaciesRes.data)
-                ? (pharmaciesRes.data as PharmacyRpcResult[]).map(formatNearbyPharmacy)
-                : [];
+            if (pharmaciesRes.error) {
+                logger.warn({
+                    message: "Error fetching nearby pharmacies",
+                    error: pharmaciesRes.error,
+                });
+            }
+            if (ashaWorkersRes.error) {
+                logger.warn({
+                    message: "Error fetching nearby ASHA workers",
+                    error: ashaWorkersRes.error,
+                });
+            }
+            if (pharmaciesRes.error && ashaWorkersRes.error) {
+                throw pharmaciesRes.error;
+            }
 
-            const ashaWorkers = Array.isArray(ashaWorkersRes.data) ? ashaWorkersRes.data : [];
+            const pharmacies =
+                !pharmaciesRes.error && Array.isArray(pharmaciesRes.data)
+                    ? (pharmaciesRes.data as PharmacyRpcResult[]).map(formatNearbyPharmacy)
+                    : [];
+
+            const ashaWorkers =
+                !ashaWorkersRes.error && Array.isArray(ashaWorkersRes.data)
+                    ? ashaWorkersRes.data
+                    : [];
 
             res.json({
                 pharmacies,

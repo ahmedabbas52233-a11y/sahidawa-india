@@ -59,7 +59,7 @@ describe("GET /api/map/nearby", () => {
         expect(rpcMock).not.toHaveBeenCalled();
     });
 
-    it("returns canonical PostGIS pharmacies and preserves an empty ASHA key", async () => {
+    it("returns pharmacy and ASHA worker data when both RPCs succeed", async () => {
         const rpcPharmacies = [
             {
                 id: "9cb1ba95-ae3c-4c8b-a6f8-c02d1b447b94",
@@ -74,10 +74,19 @@ describe("GET /api/map/nearby", () => {
                 distance: 1.24,
             },
         ];
+        const rpcAshaWorkers = [
+            {
+                id: "asha-1",
+                name: "Asha Worker Pune",
+                lat: 18.522,
+                lng: 73.854,
+                distance: 1.5,
+            },
+        ];
 
         rpcMock
             .mockResolvedValueOnce({ data: rpcPharmacies, error: null })
-            .mockResolvedValueOnce({ data: [], error: null });
+            .mockResolvedValueOnce({ data: rpcAshaWorkers, error: null });
 
         const response = await request(app).get(
             "/api/map/nearby?lat=18.5204&lng=73.8567&radius_km=5"
@@ -102,7 +111,7 @@ describe("GET /api/map/nearby", () => {
                     distance_km: 1.24,
                 },
             ],
-            asha_workers: [],
+            asha_workers: rpcAshaWorkers,
         });
         expect(rpcMock).toHaveBeenCalledTimes(2);
         expect(rpcMock).toHaveBeenCalledWith("get_nearest_pharmacies", {
@@ -138,28 +147,76 @@ describe("GET /api/map/nearby", () => {
         });
     });
 
-    it("returns 500 when a Supabase RPC reports an error", async () => {
-        try {
-            rpcMock.mockResolvedValueOnce({
-                data: null,
-                error: { message: "PostGIS function unavailable" },
-            });
+    it("preserves pharmacy data when the ASHA worker RPC fails", async () => {
+        const rpcPharmacies = [
+            {
+                id: "pharmacy-1",
+                name: "Jan Aushadhi Kendra Pune",
+                address: "Shivajinagar",
+                district: "Pune",
+                state: "Maharashtra",
+                phone_number: null,
+                is_verified: true,
+                lat: 18.521,
+                lng: 73.855,
+                distance: 1.24,
+            },
+        ];
+        const ashaError = { message: "ASHA lookup unavailable" };
+        rpcMock
+            .mockResolvedValueOnce({ data: rpcPharmacies, error: null })
+            .mockResolvedValueOnce({ data: null, error: ashaError });
 
-            const response = await request(app).get(
-                "/api/map/nearby?lat=18.5204&lng=73.8567&radius_km=5"
-            );
+        const response = await request(app).get(
+            "/api/map/nearby?lat=18.5204&lng=73.8567&radius_km=5"
+        );
 
-            expect(response.status).toBe(500);
-            expect(response.body).toEqual({ error: "Internal server error" });
-            expect(logger.error).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    message: "Error fetching nearby facilities",
-                    error: { message: "PostGIS function unavailable" },
-                })
-            );
-        } finally {
-            // No need to restore since it's a globally mocked module, but clear it
-            (logger.error as jest.Mock).mockClear();
-        }
+        expect(response.status).toBe(200);
+        expect(response.body.pharmacies).toHaveLength(1);
+        expect(response.body.pharmacies[0].name).toBe("Jan Aushadhi Kendra Pune");
+        expect(response.body.asha_workers).toEqual([]);
+        expect(logger.warn).toHaveBeenCalledWith({
+            message: "Error fetching nearby ASHA workers",
+            error: ashaError,
+        });
+    });
+
+    it("preserves ASHA worker data when the pharmacy RPC fails", async () => {
+        const pharmacyError = { message: "Pharmacy lookup unavailable" };
+        const rpcAshaWorkers = [{ id: "asha-1", name: "Asha Worker Pune" }];
+        rpcMock
+            .mockResolvedValueOnce({ data: null, error: pharmacyError })
+            .mockResolvedValueOnce({ data: rpcAshaWorkers, error: null });
+
+        const response = await request(app).get(
+            "/api/map/nearby?lat=18.5204&lng=73.8567&radius_km=5"
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.body.pharmacies).toEqual([]);
+        expect(response.body.asha_workers).toEqual(rpcAshaWorkers);
+        expect(logger.warn).toHaveBeenCalledWith({
+            message: "Error fetching nearby pharmacies",
+            error: pharmacyError,
+        });
+    });
+
+    it("returns 500 when both Supabase RPCs report errors", async () => {
+        const pharmacyError = { message: "Pharmacy lookup unavailable" };
+        const ashaError = { message: "ASHA lookup unavailable" };
+        rpcMock
+            .mockResolvedValueOnce({ data: null, error: pharmacyError })
+            .mockResolvedValueOnce({ data: null, error: ashaError });
+
+        const response = await request(app).get(
+            "/api/map/nearby?lat=18.5204&lng=73.8567&radius_km=5"
+        );
+
+        expect(response.status).toBe(500);
+        expect(response.body).toEqual({ error: "Internal server error" });
+        expect(logger.error).toHaveBeenCalledWith({
+            message: "Error fetching nearby facilities",
+            error: pharmacyError,
+        });
     });
 });
