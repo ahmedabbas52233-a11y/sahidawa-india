@@ -27,10 +27,7 @@ export async function GET(request: NextRequest) {
     const limit = isNaN(rawLimit) || rawLimit < 1 ? 10 : Math.min(rawLimit, 100);
     const offset = (page - 1) * limit;
 
-    let query = supabase
-        .from("drug_alerts")
-        .select("*", { count: "exact" })
-        .or(`snoozed_until.is.null,snoozed_until.lte.${new Date().toISOString()}`);
+    let query = supabase.from("drug_alerts").select("*", { count: "exact" });
 
     if (brand) {
         query = query.ilike("reported_brand_name", `%${escapeIlike(brand)}%`);
@@ -58,7 +55,10 @@ export async function GET(request: NextRequest) {
 
         if (pageResult.error) {
             console.error("Alerts DB Error:", pageResult.error);
-            return NextResponse.json({ error: "Failed to fetch alerts" }, { status: 500 });
+            return NextResponse.json(
+                { error: "Failed to fetch alerts", details: pageResult.error },
+                { status: 500 }
+            );
         }
 
         if (statsResult.error) {
