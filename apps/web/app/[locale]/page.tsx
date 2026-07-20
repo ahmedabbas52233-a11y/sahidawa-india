@@ -660,73 +660,69 @@ export default function SahiDawaHome() {
                                             return (
                                                 <div
                                                     key={alert.id}
-                                                    className="group relative flex cursor-pointer items-start gap-5 overflow-hidden rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all duration-300 hover:-translate-y-1 hover:border-red-300 hover:shadow-[0_8px_30px_rgba(239,68,68,0.12)] dark:border-slate-800/80 dark:bg-slate-900 dark:hover:border-red-800/80"
+                                                    className={`group relative flex cursor-pointer items-start gap-4 rounded-2xl border border-l-4 border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/50 ${
+                                                        alert.brand_name === "SYSTEM_UPDATE"
+                                                            ? "border-l-blue-500 hover:border-l-blue-600"
+                                                            : alert.cdsco_approval_status ===
+                                                                    "banned" ||
+                                                                alert.is_counterfeit_alert
+                                                              ? "border-l-red-500 hover:border-l-red-600"
+                                                              : "border-l-orange-500 hover:border-l-orange-600"
+                                                    }`}
                                                     onClick={() => handleNavigation("alerts")}
                                                 >
-                                                    {/* Animated Left Indicator bar */}
-                                                    <div
-                                                        className={`absolute top-0 bottom-0 left-0 w-2 transition-all duration-300 group-hover:w-3 ${
-                                                            alert.brand_name === "SYSTEM_UPDATE"
-                                                                ? "bg-gradient-to-b from-blue-400 to-blue-600"
-                                                                : alert.cdsco_approval_status ===
-                                                                        "banned" ||
-                                                                    alert.is_counterfeit_alert
-                                                                  ? "bg-gradient-to-b from-red-400 to-red-600"
-                                                                  : "bg-gradient-to-b from-orange-400 to-red-500"
-                                                        }`}
-                                                    />
+                                                    <div className="pointer-events-none absolute inset-0 z-0 rounded-r-2xl bg-linear-to-br from-transparent to-slate-50/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:to-slate-800/20" />
 
                                                     {/* Icon */}
                                                     <div
-                                                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-transform duration-300 group-hover:scale-110 ${
+                                                        className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
                                                             alert.brand_name === "SYSTEM_UPDATE"
-                                                                ? "bg-blue-50 text-blue-500 group-hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400"
+                                                                ? "border-blue-100 bg-blue-50 text-blue-600 dark:border-blue-900/50 dark:bg-blue-500/10 dark:text-blue-400"
                                                                 : alert.cdsco_approval_status ===
                                                                         "banned" ||
                                                                     alert.is_counterfeit_alert
-                                                                  ? "bg-red-50 text-red-500 group-hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400"
-                                                                  : "bg-orange-50 text-orange-500 group-hover:bg-orange-100 dark:bg-orange-500/10 dark:text-orange-400"
+                                                                  ? "border-red-100 bg-red-50 text-red-600 dark:border-red-900/50 dark:bg-red-500/10 dark:text-red-400"
+                                                                  : "border-orange-100 bg-orange-50 text-orange-600 dark:border-orange-900/50 dark:bg-orange-500/10 dark:text-orange-400"
                                                         }`}
                                                     >
                                                         {alert.brand_name === "SYSTEM_UPDATE" ? (
-                                                            <Globe
-                                                                size={22}
-                                                                className="drop-shadow-sm"
-                                                            />
+                                                            <Globe size={18} strokeWidth={2.5} />
                                                         ) : (
                                                             <AlertTriangle
-                                                                size={22}
-                                                                className="drop-shadow-sm"
+                                                                size={18}
+                                                                strokeWidth={2.5}
                                                             />
                                                         )}
                                                     </div>
 
-                                                    <div className="min-w-0 flex-1 pt-0.5">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <h4 className="truncate text-lg font-bold tracking-tight text-slate-900 transition-colors group-hover:text-red-600 dark:text-white dark:group-hover:text-red-400">
+                                                    <div className="relative z-10 min-w-0 flex-1 pt-0.5">
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <h4 className="truncate text-base font-bold tracking-tight text-slate-900 dark:text-white">
                                                                 {alert.brand_name}
                                                             </h4>
-                                                            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500 uppercase dark:bg-slate-800 dark:text-slate-400">
+                                                            <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
                                                                 {formatRelativeTime(
                                                                     alert.created_at,
                                                                     locale || "en"
                                                                 )}
                                                             </span>
                                                         </div>
-                                                        <p className="mt-1.5 truncate text-sm font-medium text-slate-500 dark:text-slate-400">
-                                                            {alert.composition}
+                                                        <div className="mt-1 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                                                            <span className="truncate">
+                                                                {alert.composition}
+                                                            </span>
                                                             {visibleBatchNumber ? (
-                                                                <span className="whitespace-nowrap">
-                                                                    <span className="mx-2 text-slate-300 dark:text-slate-700">
-                                                                        •
+                                                                <>
+                                                                    <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />
+                                                                    <span className="shrink-0 font-medium text-slate-600 dark:text-slate-300">
+                                                                        Batch{" "}
+                                                                        <span className="font-bold">
+                                                                            {visibleBatchNumber}
+                                                                        </span>
                                                                     </span>
-                                                                    Batch{" "}
-                                                                    <span className="font-bold text-slate-700 dark:text-slate-300">
-                                                                        {visibleBatchNumber}
-                                                                    </span>
-                                                                </span>
+                                                                </>
                                                             ) : null}
-                                                        </p>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             );
