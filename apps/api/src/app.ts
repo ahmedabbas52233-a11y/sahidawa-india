@@ -316,7 +316,7 @@ app.use("/api/webhooks", webhooksRouter);
 app.use("/api/v1/medicines", trackingRouter);
 app.use("/api/v1/wishlist", wishlistRouter);
 app.use("/api/keys", apiKeysRouter);
-app.use("/api/medicine", safetyRouter);
+app.use("/api/medicine/safety", safetyRouter);
 
 // ── Swagger UI Documentation (/api/docs) ──────────────────────────────────
 app.use(
