@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { supabase } from "../db/client";
 import { uuidSchema } from "../utils/validation";
-import { setGeospatialCacheHeaders, setImmutableCacheHeaders } from "../utils/cache";
+
 import logger from "../utils/logger";
 import { limiter } from "../middleware/rateLimit";
 import { requireAuth, AuthenticatedRequest } from "../middleware/auth";
@@ -866,7 +866,10 @@ router.get(
             }
 
             const data = await pharmacyService.getInBounds(result.data);
-            setGeospatialCacheHeaders(res);
+            res.setHeader(
+                "Cache-Control",
+                "public, max-age=60, s-maxage=300, stale-while-revalidate=86400"
+            );
             res.json(data);
         } catch (err) {
             next(err);
